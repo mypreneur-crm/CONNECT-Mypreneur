@@ -1,0 +1,21 @@
+{
+  "name": "mypreneur-connect-database-auth",
+  "version": "4.0.0",
+  "private": true,
+  "description": "Mypreneur Connect using existing database-managed users, roles, and passwords with isolated portal tables",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "start:env": "node --env-file=.env server.js",
+    "dev": "node --env-file=.env --watch server.js",
+    "check-db": "node --env-file=.env scripts/check-database.js",
+    "test-login": "node --env-file=.env scripts/test-login.js",
+    "test": "node tests/unit-test.js"
+  },
+  "dependencies": {
+    "mysql2": "3.23.1"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}
