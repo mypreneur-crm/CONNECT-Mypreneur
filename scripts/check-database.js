@@ -1,32 +1,33 @@
 'use strict';
 
 const { MySQLDatabase, databaseConfig } = require('../lib/database');
-const { initializeSchema, countRoleMappings } = require('../lib/schema');
+const { initializeSchema } = require('../lib/schema');
 const { DatabaseAuthProvider } = require('../lib/auth-provider');
 const { TABLES } = require('../lib/table-names');
 
-async function main() {
-  const db = new MySQLDatabase(databaseConfig());
+(async () => {
+  let db;
   try {
+    db = new MySQLDatabase(databaseConfig());
     await db.ready;
     await initializeSchema(db);
-    const mappings = await countRoleMappings(db);
     const auth = new DatabaseAuthProvider(db);
-    await auth.countMappedRoles();
+    const checks = await Promise.all([
+      db.get(`SELECT COUNT(*) AS count FROM ${auth.schema.usersTable}`),
+      db.get(`SELECT COUNT(*) AS count FROM ${auth.schema.rolesTable}`),
+      db.get(`SELECT COUNT(*) AS count FROM ${auth.schema.teamsTable}`),
+      db.get(`SELECT COUNT(*) AS count FROM ${auth.schema.loginHistoryTable}`)
+    ]);
     console.log('Database connection successful.');
-    console.log(`Connect role-mapping table: ${TABLES.role_mappings}`);
-    console.log(`Active Connect role mappings: ${mappings}`);
-    console.log('Usernames and passwords are read only from the existing authentication tables.');
-    if (!mappings) {
-      console.log('ACTION REQUIRED: ask the database administrator to add role mappings before login testing.');
-    }
+    console.log(`Existing users: ${Number(checks[0]?.count || 0)}`);
+    console.log(`Existing roles: ${Number(checks[1]?.count || 0)}`);
+    console.log(`Existing teams: ${Number(checks[2]?.count || 0)}`);
+    console.log(`Existing login-history rows: ${Number(checks[3]?.count || 0)}`);
+    console.log('Connect tables:', Object.values(TABLES).join(', '));
+  } catch (error) {
+    console.error('Database check failed:', error.message);
+    process.exitCode = 1;
   } finally {
-    await db.close();
+    if (db) await db.close().catch(() => {});
   }
-}
-
-main().catch(error => {
-  console.error('Database check failed.');
-  console.error(error.message);
-  process.exitCode = 1;
-});
+})();

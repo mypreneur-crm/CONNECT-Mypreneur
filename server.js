@@ -8,7 +8,7 @@ const { URL } = require('node:url');
 
 const { MySQLDatabase, databaseConfig } = require('./lib/database');
 const { LocalFileStore } = require('./lib/file-store');
-const { initializeSchema, countRoleMappings } = require('./lib/schema');
+const { initializeSchema } = require('./lib/schema');
 const { DatabaseAuthProvider, hashScryptPassword } = require('./lib/auth-provider');
 
 const PORT = Number(process.env.PORT || 3000);
@@ -33,6 +33,8 @@ let fileStore;
 let authProvider;
 let dummyPasswordHash;
 let server;
+let sessionSecret;
+const loginAttempts = new Map();
 let shuttingDown = false;
 
 function nowIso() { return new Date().toISOString(); }
@@ -63,37 +65,39 @@ function loginAttemptKey(ip, username) {
   return crypto.createHash('sha256').update(`${ip}\n${username}`).digest('hex');
 }
 
-async function loginAllowed(key) {
-  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  await db.run('DELETE FROM login_attempts WHERE updated_at < ?', [cutoff]);
-  const row = await db.get('SELECT failures,window_started,blocked_until FROM login_attempts WHERE attempt_key=?', [key]);
+function loginAllowed(key) {
+  const now = Date.now();
+  const row = loginAttempts.get(key);
   if (!row) return true;
-  if (row.blocked_until && new Date(row.blocked_until).getTime() > Date.now()) return false;
-  if (Date.now() - new Date(row.window_started).getTime() >= LOGIN_WINDOW_MS) {
-    await db.run('DELETE FROM login_attempts WHERE attempt_key=?', [key]);
+  if (row.blockedUntil && row.blockedUntil > now) return false;
+  if (now - row.windowStarted >= LOGIN_WINDOW_MS) {
+    loginAttempts.delete(key);
     return true;
   }
-  return Number(row.failures) < MAX_LOGIN_FAILURES;
+  return row.failures < MAX_LOGIN_FAILURES;
 }
 
-async function registerLoginFailure(key) {
-  const stamp = nowIso();
-  const row = await db.get('SELECT failures,window_started FROM login_attempts WHERE attempt_key=?', [key]);
-  if (!row || Date.now() - new Date(row.window_started).getTime() >= LOGIN_WINDOW_MS) {
-    await db.run(`INSERT INTO login_attempts(attempt_key,failures,window_started,blocked_until,updated_at)
-      VALUES (?,1,?,NULL,?)
-      ON DUPLICATE KEY UPDATE failures=1,window_started=VALUES(window_started),blocked_until=NULL,updated_at=VALUES(updated_at)`,
-    [key, stamp, stamp]);
+function registerLoginFailure(key) {
+  const now = Date.now();
+  const row = loginAttempts.get(key);
+  if (!row || now - row.windowStarted >= LOGIN_WINDOW_MS) {
+    loginAttempts.set(key, { failures: 1, windowStarted: now, blockedUntil: null });
     return;
   }
-
-  const failures = Number(row.failures) + 1;
-  const blockedUntil = failures >= MAX_LOGIN_FAILURES ? new Date(Date.now() + LOGIN_BLOCK_MS).toISOString() : null;
-  await db.run('UPDATE login_attempts SET failures=?,blocked_until=?,updated_at=? WHERE attempt_key=?', [failures, blockedUntil, stamp, key]);
+  row.failures += 1;
+  if (row.failures >= MAX_LOGIN_FAILURES) row.blockedUntil = now + LOGIN_BLOCK_MS;
+  loginAttempts.set(key, row);
 }
 
-async function clearLoginFailures(key) {
-  await db.run('DELETE FROM login_attempts WHERE attempt_key=?', [key]);
+function clearLoginFailures(key) {
+  loginAttempts.delete(key);
+}
+
+function cleanupLoginAttempts() {
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  for (const [key, row] of loginAttempts.entries()) {
+    if (row.windowStarted < cutoff && (!row.blockedUntil || row.blockedUntil < Date.now())) loginAttempts.delete(key);
+  }
 }
 
 function parseCookies(req) {
@@ -108,27 +112,37 @@ function parseCookies(req) {
   return output;
 }
 
+function signSessionPayload(payload) {
+  const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const signature = crypto.createHmac('sha256', sessionSecret).update(encoded).digest('base64url');
+  return `${encoded}.${signature}`;
+}
+
+function verifySessionToken(token) {
+  const [encoded, signature, extra] = String(token || '').split('.');
+  if (!encoded || !signature || extra) return null;
+  const expected = crypto.createHmac('sha256', sessionSecret).update(encoded).digest();
+  let supplied;
+  try { supplied = Buffer.from(signature, 'base64url'); } catch { return null; }
+  if (supplied.length !== expected.length || !crypto.timingSafeEqual(supplied, expected)) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'));
+    if (payload.v !== 1 || !Number.isInteger(payload.userId) || !payload.csrf || !payload.exp) return null;
+    if (Number(payload.exp) <= Date.now()) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
 async function getAuth(req) {
-  const stamp = nowIso();
-  await db.run('DELETE FROM sessions WHERE expires_at < ?', [stamp]);
   const token = parseCookies(req).mc_session;
   if (!token) return null;
-  const hash = tokenHash(token);
-  const session = await db.get(`
-    SELECT token_hash,user_id,csrf_token,expires_at,last_seen_at
-    FROM sessions WHERE token_hash=? LIMIT 1`, [hash]);
-  if (!session || new Date(session.expires_at).getTime() <= Date.now()) {
-    if (session) await db.run('DELETE FROM sessions WHERE token_hash=?', [hash]);
-    return null;
-  }
-  const userRecord = await authProvider.findById(session.user_id);
-  if (!userRecord || !userRecord.active) {
-    await db.run('DELETE FROM sessions WHERE token_hash=?', [hash]);
-    return null;
-  }
-  const nextExpiry = new Date(Date.now() + SESSION_MS).toISOString();
-  await db.run('UPDATE sessions SET last_seen_at=?,expires_at=? WHERE token_hash=?', [stamp, nextExpiry, hash]);
-  return { token, tokenHash: hash, csrf: session.csrf_token, user: publicUser(userRecord) };
+  const session = verifySessionToken(token);
+  if (!session) return null;
+  const userRecord = await authProvider.findById(session.userId);
+  if (!userRecord || !userRecord.active || !userRecord.portalAccess) return null;
+  return { token, csrf: session.csrf, loginId: session.loginId || null, user: publicUser(userRecord) };
 }
 
 function canSeeCategory(user, category) {
@@ -291,10 +305,7 @@ function parseDataFile(file, required = true) {
   return { name, type: safeMimeForName(name), buffer };
 }
 
-async function audit(user, action, entity, entityId, details = '') {
-  await db.run(`INSERT INTO audit_logs(user_id,action,entity,entity_id,details,created_at)
-    VALUES (?,?,?,?,?,?)`, [user ? user.id : null, action, entity, entityId || null, String(details).slice(0, 1000), nowIso()]);
-}
+async function audit() { /* Existing system owns audit and login-history data. */ }
 
 function serializeLink(row) {
   return {
@@ -439,36 +450,55 @@ async function handleApi(req, res, url) {
 
     const ip = clientIp(req);
     const attemptKey = loginAttemptKey(ip, username);
-    if (!await loginAllowed(attemptKey)) return sendError(res, 429, 'Too many sign-in attempts. Try again later.', 'RATE_LIMITED');
+    cleanupLoginAttempts();
+    if (!loginAllowed(attemptKey)) return sendError(res, 429, 'Too many sign-in attempts. Try again later.', 'RATE_LIMITED');
 
-    const row = await authProvider.findByLogin(username);
+    let row = null;
+    try {
+      row = await authProvider.findByLogin(username, { requireAccess: false });
+    } catch (error) {
+      if (!['CONFLICTING_PORTAL_ROLES', 'ROLE_TEAM_MISMATCH'].includes(error.code)) throw error;
+    }
     const passwordMatches = row
       ? await authProvider.verifyPassword(password, row.passwordHash)
       : await authProvider.verifyPassword(password, dummyPasswordHash);
-    const ok = Boolean(row && row.active && passwordMatches);
+    const ok = Boolean(row && row.active && row.portalAccess && passwordMatches);
 
     if (!ok) {
-      await registerLoginFailure(attemptKey);
-      await audit(row ? publicUser(row) : null, 'login_failed', 'session', null, `username=${username}; ipHash=${tokenHash(ip)}`);
-      return sendError(res, 401, 'Invalid username, password, or portal role.', 'INVALID_CREDENTIALS');
+      registerLoginFailure(attemptKey);
+      await authProvider.recordLogin({
+        userId: row?.id || null,
+        status: 'FAILED',
+        ipAddress: ip,
+        deviceInfo: req.headers['user-agent'] || ''
+      });
+      return sendError(res, 401, 'Invalid username, password, role, or team assignment.', 'INVALID_CREDENTIALS');
     }
 
-    await clearLoginFailures(attemptKey);
-    const token = randomToken(32);
+    clearLoginFailures(attemptKey);
+    await authProvider.updateLastLogin(row.id);
+    const loginId = await authProvider.recordLogin({
+      userId: row.id,
+      status: 'SUCCESS',
+      ipAddress: ip,
+      deviceInfo: req.headers['user-agent'] || ''
+    });
     const csrf = randomToken(24);
-    const created = nowIso();
-    const expires = addMs(created, SESSION_MS);
-    await db.run(`INSERT INTO sessions(token_hash,user_id,csrf_token,created_at,last_seen_at,expires_at)
-      VALUES (?,?,?,?,?,?)`, [tokenHash(token), row.id, csrf, created, created, expires]);
-    await audit(publicUser(row), 'login', 'session', null, `ipHash=${tokenHash(ip)}`);
+    const token = signSessionPayload({
+      v: 1,
+      userId: row.id,
+      loginId,
+      csrf,
+      iat: Date.now(),
+      exp: Date.now() + SESSION_MS
+    });
     return sendJson(res, 200, { user: publicUser(row), csrfToken: csrf }, { 'Set-Cookie': loginCookie(token) });
   }
 
   if (method === 'POST' && pathname === '/api/logout') {
     const auth = await requireAuth(req, res, { csrf: true });
     if (!auth) return;
-    await db.run('DELETE FROM sessions WHERE token_hash=?', [auth.tokenHash]);
-    await audit(auth.user, 'logout', 'session', null);
+    await authProvider.recordLogout(auth.loginId, auth.user.id);
     return sendJson(res, 200, { ok: true }, { 'Set-Cookie': clearCookie() });
   }
 
@@ -854,14 +884,14 @@ async function start() {
   db = new MySQLDatabase(databaseConfig());
   await db.ready;
   await initializeSchema(db);
-  authProvider = new DatabaseAuthProvider(db);
-  dummyPasswordHash = await hashScryptPassword(randomToken(24));
-  const mappedRoles = await countRoleMappings(db);
-  if (mappedRoles === 0) {
-    const error = new Error('No active Connect role mappings exist. Your database administrator must map database roles in the connect_role_mappings table.');
-    error.code = 'ROLE_MAPPINGS_NOT_CONFIGURED';
+  sessionSecret = String(process.env.SESSION_SECRET || '');
+  if (sessionSecret.length < 32) {
+    const error = new Error('SESSION_SECRET must be at least 32 characters.');
+    error.code = 'MISSING_SESSION_SECRET';
     throw error;
   }
+  authProvider = new DatabaseAuthProvider(db);
+  dummyPasswordHash = await hashScryptPassword(randomToken(24));
 
 
   server = http.createServer(async (req, res) => {
@@ -886,7 +916,7 @@ async function start() {
     server.listen(PORT, HOST, resolve);
   });
   console.log(`Mypreneur Connect running at http://localhost:${PORT}`);
-  console.log('MariaDB connection established. Authentication is database-managed.');
+  console.log('MariaDB connection established. Users, roles, teams, and login history are database-managed.');
   console.log(`Protected file storage: ${UPLOAD_DIR}`);
 }
 
@@ -907,8 +937,11 @@ start().catch(async error => {
   if (error.code === 'MISSING_DATABASE_CONFIG' || error.code === 'INVALID_DATABASE_CONFIG') {
     console.error('\nAdd correct DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, and DB_NAME values in Hostinger Environment Variables.');
   }
-  if (error.code === 'ROLE_MAPPINGS_NOT_CONFIGURED') {
-    console.error('\nAsk the database administrator to add role mappings in connect_role_mappings. User creation and passwords remain in the existing authentication tables.');
+  if (error.code === 'MISSING_ACCESS_CONFIG') {
+    console.error('\nAdd the PORTAL_* role and team environment variables supplied in DEPLOYMENT.txt.');
+  }
+  if (error.code === 'MISSING_SESSION_SECRET') {
+    console.error('\nAdd a random SESSION_SECRET of at least 32 characters in the hosting environment.');
   }
   if (error.code === 'INVALID_AUTH_SCHEMA') {
     console.error('\nCheck the AUTH_* table-name environment variables.');
