@@ -919,6 +919,11 @@ async function start() {
   server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+      if (url.pathname.startsWith('/connect/')) {
+        url.pathname = url.pathname.slice('/connect'.length);
+      } else if (url.pathname === '/connect') {
+        url.pathname = '/';
+      }
       if (url.pathname.startsWith('/api/')) return await handleApi(req, res, url);
       if (!['GET', 'HEAD'].includes(req.method || 'GET')) return sendError(res, 405, 'Method not allowed.', 'METHOD_NOT_ALLOWED');
       return await serveStatic(req, res, url);
