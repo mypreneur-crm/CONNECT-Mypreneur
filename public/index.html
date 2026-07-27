@@ -994,6 +994,18 @@ const ic = (n, s) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
 
 /* ---------- Backend API client ---------- */
 let csrfToken = '';
+function resolveUrl(urlStr){
+  if (typeof urlStr === 'string' && urlStr.startsWith('/api/')){
+    let base = window.location.pathname;
+    if (base.endsWith('/index.html')){
+      base = base.slice(0, -'/index.html'.length);
+    }
+    base = base.replace(/\/+$/, '');
+    return base + urlStr;
+  }
+  return urlStr;
+}
+
 async function apiRequest(endpoint, options = {}){
   const method = String(options.method || 'GET').toUpperCase();
   const headers = Object.assign({ 'Accept':'application/json' }, options.headers || {});
@@ -1002,19 +1014,20 @@ async function apiRequest(endpoint, options = {}){
     headers['Content-Type'] = 'application/json';
     body = JSON.stringify(body);
   }
-  if (!['GET','HEAD'].includes(method) && csrfToken && endpoint !== '/api/login'){
+  const isLogin = endpoint === '/api/login' || endpoint.endsWith('/api/login');
+  if (!['GET','HEAD'].includes(method) && csrfToken && !isLogin){
     headers['X-CSRF-Token'] = csrfToken;
   }
   let response;
   try {
-    response = await fetch(endpoint, { method, headers, body, credentials:'same-origin' });
+    response = await fetch(resolveUrl(endpoint), { method, headers, body, credentials:'same-origin' });
   } catch(e){
     throw new Error('Cannot connect to the portal server. Check that the backend is running.');
   }
   const isJson = (response.headers.get('content-type') || '').includes('application/json');
   const payload = isJson ? await response.json().catch(() => ({})) : {};
   if (!response.ok){
-    if (response.status === 401 && endpoint !== '/api/login'){
+    if (response.status === 401 && !isLogin){
       session = null; csrfToken = ''; links = []; events = []; announcements = [];
       showLogin();
     }
@@ -1140,7 +1153,7 @@ function toast(msg){
 /* Opens a URL once in a separate tab without triggering a same-tab fallback. */
 function openInNewTab(url){
   const a = document.createElement('a');
-  a.href = url;
+  a.href = resolveUrl(url);
   a.target = '_blank';
   a.rel = 'noopener noreferrer';
   a.style.display = 'none';
