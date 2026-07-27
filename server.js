@@ -6,6 +6,28 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { URL } = require('node:url');
 
+const envPath = path.join(__dirname, '.env');
+if (fs.existsSync(envPath)) {
+  try {
+    if (typeof process.loadEnvFile === 'function') {
+      process.loadEnvFile(envPath);
+    } else {
+      const lines = fs.readFileSync(envPath, 'utf8').split(/\r?\n/);
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed && !trimmed.startsWith('#') && trimmed.includes('=')) {
+          const idx = trimmed.indexOf('=');
+          const key = trimmed.slice(0, idx).trim();
+          const val = trimmed.slice(idx + 1).trim().replace(/^["']|["']$/g, '');
+          if (key && process.env[key] === undefined) {
+            process.env[key] = val;
+          }
+        }
+      }
+    }
+  } catch (e) {}
+}
+
 const { MySQLDatabase, databaseConfig } = require('./lib/database');
 const { LocalFileStore } = require('./lib/file-store');
 const { initializeSchema } = require('./lib/schema');
