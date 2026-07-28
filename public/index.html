@@ -9,26 +9,33 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root{
-  --orange:#FF6B00;
-  --orange-dark:#E85F00;
-  --orange-tint:#FFF1E6;
-  --sidebar:#111827;
-  --sidebar-2:#1C2534;
+  --navy:#0F0147;
+  --navy-dark:#0A0134;
+  --navy-light:#180A5C;
+  --cyan:#38B6FF;
+  --cyan-dark:#219BE5;
+  --cyan-tint:#EBF7FF;
+  --orange:var(--cyan);
+  --orange-dark:var(--navy);
+  --orange-tint:var(--cyan-tint);
+  --sidebar:#0F0147;
+  --sidebar-2:#160956;
   --bg:#F8FAFC;
   --card:#FFFFFF;
-  --text:#111827;
-  --muted:#6B7280;
-  --border:#E5E7EB;
-  --green:#22C55E;
-  --green-tint:#E9F9EF;
-  --blue:#2563EB;
-  --blue-tint:#EAF1FF;
-  --purple:#7C3AED;
-  --purple-tint:#F3EDFD;
-  --red:#DC2626;
-  --radius:14px;
-  --shadow:0 1px 2px rgba(17,24,39,.05);
-  --shadow-lg:0 12px 28px -8px rgba(17,24,39,.18);
+  --text:#0F172A;
+  --muted:#64748B;
+  --border:#E2E8F0;
+  --green:#10B981;
+  --green-tint:#ECFDF5;
+  --blue:#38B6FF;
+  --blue-tint:#EBF7FF;
+  --purple:#8B5CF6;
+  --purple-tint:#F5F3FF;
+  --red:#EF4444;
+  --radius:12px;
+  --radius-lg:16px;
+  --shadow:0 4px 14px -2px rgba(15,1,71,.06);
+  --shadow-lg:0 20px 40px -12px rgba(15,1,71,.20);
   --side-w:264px;
 }
 *{margin:0;padding:0;box-sizing:border-box}
@@ -87,67 +94,92 @@ svg{flex-shrink:0}
 /* ============ LOGIN ============ */
 .login-page{
   min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;
-  background:linear-gradient(135deg,#FF6B00 0%,#FF8A3C 55%,#FFB067 100%);
+  background:radial-gradient(circle at 50% 30%, #160756 0%, #0F0147 60%, #060024 100%);
   position:relative;overflow:hidden;
 }
-.login-page::before,.login-page::after{
-  content:"";position:absolute;border-radius:50%;background:rgba(255,255,255,.12);
+.login-page::before{
+  content:"";position:absolute;width:550px;height:550px;top:-160px;left:-140px;
+  border-radius:50%;background:radial-gradient(circle, rgba(56,182,255,.22) 0%, transparent 70%);
+  pointer-events:none;
 }
-.login-page::before{width:420px;height:420px;top:-140px;left:-120px}
-.login-page::after{width:520px;height:520px;bottom:-200px;right:-160px}
+.login-page::after{
+  content:"";position:absolute;width:600px;height:600px;bottom:-220px;right:-180px;
+  border-radius:50%;background:radial-gradient(circle, rgba(56,182,255,.18) 0%, transparent 70%);
+  pointer-events:none;
+}
 .login-card{
-  position:relative;z-index:1;background:var(--card);border-radius:22px;
-  padding:40px 36px 32px;width:min(430px,100%);box-shadow:0 24px 60px -12px rgba(120,40,0,.45);
+  position:relative;z-index:1;background:var(--card);border-radius:20px;
+  padding:36px 36px 32px;width:min(440px,100%);
+  box-shadow:0 24px 60px -12px rgba(10,1,52,.55);
+  border:1px solid rgba(226,232,240,.8);
 }
-.login-logo{display:flex;align-items:center;gap:12px;margin-bottom:8px}
+.mac-dots{
+  display:flex;align-items:center;gap:7px;margin-bottom:20px;
+}
+.mac-dot{width:11px;height:11px;border-radius:50%;display:inline-block}
+.mac-dot.red{background:#FF5F56;border:1px solid #E0443E}
+.mac-dot.yellow{background:#FFBD2E;border:1px solid #DEA123}
+.mac-dot.green{background:#27C93F;border:1px solid #1AAB29}
+
+.login-logo{display:flex;align-items:center;gap:13px;margin-bottom:6px}
 .logo-mark{
-  width:44px;height:44px;border-radius:12px;background:var(--orange);color:#fff;
+  width:46px;height:46px;border-radius:12px;background:var(--navy);color:var(--cyan);
   display:flex;align-items:center;justify-content:center;font-weight:800;font-size:22px;
-  box-shadow:0 6px 14px -4px rgba(255,107,0,.55);
+  box-shadow:0 6px 16px -4px rgba(15,1,71,.4);border:1px solid rgba(56,182,255,.3);
+  flex-shrink:0;overflow:hidden;padding:3px;
 }
-.logo-name{font-size:21px;font-weight:800;letter-spacing:-.3px}
-.logo-name span{color:var(--orange)}
-.login-card p.sub{color:var(--muted);font-size:14px;margin-bottom:26px}
+.logo-mark img{width:100%;height:100%;object-fit:contain;border-radius:8px}
+.logo-name{font-size:20px;font-weight:800;letter-spacing:-.4px;color:var(--navy);line-height:1.1}
+.logo-name span{color:var(--cyan);font-weight:800}
+.logo-name small{display:block;font-size:10.5px;font-weight:700;letter-spacing:1.2px;color:var(--muted);margin-top:2px;text-transform:uppercase}
+.login-card p.sub{color:var(--muted);font-size:14px;margin-bottom:24px}
 .field{margin-bottom:16px}
-.field label{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
+.field label{display:block;font-size:13px;font-weight:600;margin-bottom:6px;color:#1E293B}
 .field input,.field select,.field textarea{
-  width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:10px;
-  background:#fff;transition:border-color .15s, box-shadow .15s;
+  width:100%;padding:11px 14px;border:1.5px solid var(--border);border-radius:12px;
+  background:#fff;transition:border-color .15s, box-shadow .15s;font-size:14px;
 }
 .field input:focus,.field select:focus,.field textarea:focus{
-  outline:none;border-color:var(--orange);box-shadow:0 0 0 4px rgba(255,107,0,.12);
+  outline:none;border-color:var(--cyan);box-shadow:0 0 0 4px rgba(56,182,255,.18);
 }
 .login-error{
   display:none;background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA;
-  border-radius:10px;padding:10px 12px;font-size:13px;font-weight:500;margin-bottom:14px;
+  border-radius:12px;padding:10px 14px;font-size:13px;font-weight:500;margin-bottom:16px;
 }
 .login-error.show{display:block}
 .btn{
   display:inline-flex;align-items:center;justify-content:center;gap:8px;
-  font-weight:600;font-size:14px;border-radius:10px;padding:10px 18px;
+  font-weight:600;font-size:14px;border-radius:12px;padding:11px 20px;
   transition:transform .15s, box-shadow .15s, background .15s;
 }
 .btn:active{transform:scale(.98)}
-.btn-primary{background:var(--orange);color:#fff;box-shadow:0 6px 14px -6px rgba(255,107,0,.6)}
-.btn-primary:hover{background:var(--orange-dark)}
+.btn-primary{
+  background:linear-gradient(135deg, var(--navy) 0%, var(--navy-light) 100%);
+  color:#fff;box-shadow:0 6px 16px -4px rgba(15,1,71,.4);
+  border:1px solid rgba(56,182,255,.2);
+}
+.btn-primary:hover{
+  background:linear-gradient(135deg, var(--cyan-dark) 0%, var(--cyan) 100%);
+  color:#0F0147;box-shadow:0 8px 20px -4px rgba(56,182,255,.5);
+}
 .btn-ghost{border:1.5px solid var(--border);background:#fff;color:var(--text)}
 .btn-ghost:hover{border-color:#CBD5E1;background:#F8FAFC}
 .btn-danger{background:var(--red);color:#fff}
 .btn-danger:hover{background:#B91C1C}
-.btn-block{width:100%;padding:12px}
-.login-hint{margin-top:18px;text-align:center;font-size:12px;color:var(--muted)}
+.btn-block{width:100%;padding:12px;font-size:14.5px}
+.login-hint{margin-top:20px;text-align:center;font-size:12px;color:var(--muted)}
 .pw-wrap{position:relative}
-.pw-wrap input{padding-right:64px}
+.pw-wrap input{padding-right:68px}
 .pw-toggle{
   position:absolute;right:8px;top:50%;transform:translateY(-50%);
-  font-size:12px;font-weight:700;color:var(--orange);padding:6px 8px;border-radius:8px;
+  font-size:12px;font-weight:700;color:var(--cyan-dark);padding:6px 10px;border-radius:8px;
 }
-.pw-toggle:hover{background:var(--orange-tint)}
+.pw-toggle:hover{background:var(--cyan-tint)}
 
 /* ============ APP SHELL ============ */
 .app-shell{min-height:100vh}
 .scrim{
-  position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:40;
+  position:fixed;inset:0;background:rgba(15,1,71,.6);z-index:40;
   opacity:0;pointer-events:none;transition:opacity .2s;
 }
 .scrim.show{opacity:1;pointer-events:auto}
@@ -155,38 +187,39 @@ svg{flex-shrink:0}
 /* Sidebar */
 .sidebar{
   position:fixed;top:0;left:0;bottom:0;width:var(--side-w);z-index:50;
-  background:var(--sidebar);color:#E5E7EB;display:flex;flex-direction:column;
-  transition:transform .25s ease;
+  background:var(--sidebar);color:#E2E8F0;display:flex;flex-direction:column;
+  transition:transform .25s ease;border-right:1px solid rgba(255,255,255,.08);
 }
 .side-logo{
-  display:flex;align-items:center;gap:11px;padding:20px 20px 18px;
-  border-bottom:1px solid rgba(255,255,255,.07);
+  display:flex;align-items:center;gap:12px;padding:20px 20px 18px;
+  border-bottom:1px solid rgba(255,255,255,.08);
 }
 .side-logo .logo-mark{width:38px;height:38px;font-size:19px;border-radius:10px}
-.side-logo .logo-name{font-size:17px;color:#fff}
-.side-close{margin-left:auto;color:#9CA3AF;display:none;padding:4px}
-.side-nav{flex:1;overflow-y:auto;padding:14px 12px;display:flex;flex-direction:column;gap:3px}
+.side-logo .logo-name{font-size:16px;color:#fff}
+.side-close{margin-left:auto;color:#94A3B8;display:none;padding:4px}
+.side-nav{flex:1;overflow-y:auto;padding:14px 12px;display:flex;flex-direction:column;gap:4px}
 .side-nav::-webkit-scrollbar{width:4px}
 .side-nav::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:4px}
 .nav-item{
   display:flex;align-items:center;gap:12px;width:100%;text-align:left;
-  padding:11px 13px;border-radius:11px;font-size:14px;font-weight:500;color:#D1D5DB;
+  padding:11px 14px;border-radius:11px;font-size:14px;font-weight:500;color:#94A3B8;
   transition:background .15s,color .15s;
 }
 .nav-item svg{width:19px;height:19px;opacity:.85}
 .nav-item:hover{background:var(--sidebar-2);color:#fff}
 .nav-item.active{
-  background:var(--orange);color:#fff;font-weight:600;
-  box-shadow:0 6px 16px -6px rgba(255,107,0,.55);
+  background:linear-gradient(135deg, var(--cyan) 0%, var(--cyan-dark) 100%);
+  color:#0F0147;font-weight:700;
+  box-shadow:0 6px 18px -4px rgba(56,182,255,.45);
 }
-.nav-item.active svg{opacity:1}
+.nav-item.active svg{opacity:1;stroke-width:2.5px}
 .nav-item .ext{margin-left:auto;width:14px;height:14px;opacity:.55}
 .side-quote{
-  margin:14px;padding:18px;border-radius:14px;background:var(--sidebar-2);
-  font-size:13.5px;line-height:1.55;color:#D1D5DB;
+  margin:14px;padding:16px;border-radius:14px;background:var(--sidebar-2);
+  font-size:13px;line-height:1.5;color:#94A3B8;border:1px solid rgba(255,255,255,.05);
 }
-.side-quote .qmark{color:var(--orange);font-size:26px;font-weight:800;line-height:1;display:block;margin-bottom:6px}
-.side-quote .tag{display:block;margin-top:10px;color:var(--orange);font-weight:700;font-size:12.5px}
+.side-quote .qmark{color:var(--cyan);font-size:24px;font-weight:800;line-height:1;display:block;margin-bottom:4px}
+.side-quote .tag{display:block;margin-top:8px;color:var(--cyan);font-weight:700;font-size:11.5px}
 
 /* Main column */
 .main{margin-left:var(--side-w);min-height:100vh;display:flex;flex-direction:column}
@@ -195,15 +228,21 @@ svg{flex-shrink:0}
 .topbar{
   position:sticky;top:0;z-index:30;background:var(--card);border-bottom:1px solid var(--border);
   display:flex;align-items:center;gap:14px;padding:12px 26px;
+  backdrop-filter:blur(10px);
 }
 .hamburger{display:none;padding:6px;color:var(--text)}
 .search-wrap{flex:1;max-width:560px;position:relative}
-.search-wrap .s-icon{position:absolute;pointer-events:none;left:13px;top:50%;transform:translateY(-50%);color:var(--muted)}
+.search-wrap .s-icon{position:absolute;pointer-events:none;left:14px;top:50%;transform:translateY(-50%);color:var(--muted)}
+.search-wrap .cmd-k{
+  position:absolute;right:12px;top:50%;transform:translateY(-50%);
+  font-size:11px;font-weight:700;color:var(--muted);background:var(--bg);
+  padding:3px 7px;border-radius:6px;border:1px solid var(--border);pointer-events:none;
+}
 .search-wrap input{
-  width:100%;padding:10px 14px 10px 42px;border:1.5px solid var(--border);
+  width:100%;padding:10px 48px 10px 42px;border:1.5px solid var(--border);
   border-radius:12px;background:var(--bg);transition:border-color .15s, box-shadow .15s, background .15s;
 }
-.search-wrap input:focus{outline:none;background:#fff;border-color:var(--orange);box-shadow:0 0 0 4px rgba(255,107,0,.1)}
+.search-wrap input:focus{outline:none;background:#fff;border-color:var(--cyan);box-shadow:0 0 0 4px rgba(56,182,255,.15)}
 .search-results{
   position:absolute;top:calc(100% + 8px);left:0;right:0;background:#fff;border:1px solid var(--border);
   border-radius:12px;box-shadow:var(--shadow-lg);overflow:hidden;display:none;max-height:320px;overflow-y:auto;
@@ -275,31 +314,32 @@ button.dd-note:hover{background:var(--bg)}
 /* Banner */
 .banner{
   position:relative;overflow:hidden;border-radius:20px;color:#fff;
-  background:linear-gradient(105deg,#FF6B00 0%,#FF853A 52%,#FFA35F 100%);
-  padding:38px 40px;box-shadow:0 18px 40px -18px rgba(255,107,0,.55);
+  background:linear-gradient(135deg, #0F0147 0%, #160756 55%, #200D7D 100%);
+  padding:38px 40px;box-shadow:0 18px 40px -18px rgba(15,1,71,.5);
+  border:1px solid rgba(56,182,255,.2);
 }
 .banner::before{
-  content:"";position:absolute;pointer-events:none;right:-70px;top:-70px;width:280px;height:280px;
-  border-radius:50%;background:rgba(255,255,255,.12);
+  content:"";position:absolute;pointer-events:none;right:-70px;top:-70px;width:300px;height:300px;
+  border-radius:50%;background:radial-gradient(circle, rgba(56,182,255,.3) 0%, transparent 70%);
 }
 .banner::after{
-  content:"";position:absolute;right:90px;bottom:-110px;width:220px;height:220px;
-  border-radius:50%;background:rgba(255,255,255,.09);
+  content:"";position:absolute;right:90px;bottom:-110px;width:240px;height:240px;
+  border-radius:50%;background:radial-gradient(circle, rgba(56,182,255,.2) 0%, transparent 70%);
 }
 .banner .dots{
-  position:absolute;left:26px;top:26px;width:74px;height:44px;opacity:.6;
-  background-image:radial-gradient(rgba(255,255,255,.85) 2px, transparent 2.5px);
+  position:absolute;left:26px;top:26px;width:74px;height:44px;opacity:.4;
+  background-image:radial-gradient(rgba(56,182,255,.85) 2px, transparent 2.5px);
   background-size:18px 14px;
 }
-.banner h1{font-size:clamp(25px,3.4vw,38px);font-weight:800;letter-spacing:-.5px;position:relative}
-.banner p{font-size:clamp(14px,1.6vw,17px);opacity:.95;margin-top:6px;position:relative}
+.banner h1{font-size:clamp(25px,3.4vw,38px);font-weight:800;letter-spacing:-.5px;position:relative;color:#fff}
+.banner p{font-size:clamp(14px,1.6vw,17px);opacity:.9;margin-top:6px;position:relative;color:#E2E8F0}
 .banner-actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:24px;position:relative}
 .banner-btn{
-  display:inline-flex;align-items:center;gap:9px;background:#fff;color:var(--orange);
-  font-weight:700;font-size:14px;padding:11px 18px;border-radius:11px;
-  box-shadow:0 8px 18px -8px rgba(120,40,0,.5);transition:transform .15s,box-shadow .15s;
+  display:inline-flex;align-items:center;gap:9px;background:var(--cyan);color:#0F0147;
+  font-weight:700;font-size:14px;padding:11px 20px;border-radius:12px;
+  box-shadow:0 8px 20px -6px rgba(56,182,255,.5);transition:transform .15s,box-shadow .15s;
 }
-.banner-btn:hover{transform:translateY(-2px);box-shadow:0 14px 24px -10px rgba(120,40,0,.55)}
+.banner-btn:hover{transform:translateY(-2px);background:#fff;color:var(--navy);box-shadow:0 14px 26px -8px rgba(56,182,255,.6)}
 .banner-btn svg{width:17px;height:17px}
 .banner-btn .arr{width:14px;height:14px;opacity:.7}
 
@@ -633,9 +673,19 @@ td .t-url{
 <!-- ================= LOGIN PAGE ================= -->
 <div id="loginPage" class="login-page">
   <div class="login-card">
+    <div class="mac-dots">
+      <span class="mac-dot red"></span>
+      <span class="mac-dot yellow"></span>
+      <span class="mac-dot green"></span>
+    </div>
     <div class="login-logo">
-      <div class="logo-mark">M</div>
-      <div class="logo-name">Mypreneur <span>Connect</span></div>
+      <div class="logo-mark">
+        <img src="/logo.png" alt="Mypreneur Logo">
+      </div>
+      <div class="logo-name">
+        MYPRENEUR <span>CONNECT</span>
+        <small>Growing Together</small>
+      </div>
     </div>
     <p class="sub">Sign in to your team portal</p>
     <div id="loginError" class="login-error">Invalid username or password. Please try again.</div>
@@ -663,8 +713,13 @@ td .t-url{
 
   <aside id="sidebar" class="sidebar" aria-label="Main navigation">
     <div class="side-logo">
-      <div class="logo-mark">M</div>
-      <div class="logo-name">Mypreneur <span style="color:var(--orange)">Connect</span></div>
+      <div class="logo-mark">
+        <img src="/logo.png" alt="Mypreneur Logo">
+      </div>
+      <div class="logo-name" style="font-size:15px;color:#fff;line-height:1.1">
+        MYPRENEUR <span style="color:var(--cyan);font-weight:800">CONNECT</span>
+        <small style="display:block;font-size:9.5px;color:#94A3B8;letter-spacing:1px;text-transform:uppercase;margin-top:2px">Growing Together</small>
+      </div>
       <button id="sideClose" class="side-close" aria-label="Close menu"></button>
     </div>
     <nav id="sideNav" class="side-nav"></nav>
@@ -682,6 +737,7 @@ td .t-url{
       <div class="search-wrap">
         <span class="s-icon" id="searchIcon"></span>
         <input id="globalSearch" type="text" placeholder="Search policies, events, announcements, team links..." aria-label="Search the portal">
+        <span class="cmd-k">⌘K</span>
         <div id="searchResults" class="search-results"></div>
       </div>
 
@@ -994,18 +1050,6 @@ const ic = (n, s) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
 
 /* ---------- Backend API client ---------- */
 let csrfToken = '';
-function resolveUrl(urlStr){
-  if (typeof urlStr === 'string' && urlStr.startsWith('/api/')){
-    let base = window.location.pathname;
-    if (base.endsWith('/index.html')){
-      base = base.slice(0, -'/index.html'.length);
-    }
-    base = base.replace(/\/+$/, '');
-    return base + urlStr;
-  }
-  return urlStr;
-}
-
 async function apiRequest(endpoint, options = {}){
   const method = String(options.method || 'GET').toUpperCase();
   const headers = Object.assign({ 'Accept':'application/json' }, options.headers || {});
@@ -1014,20 +1058,19 @@ async function apiRequest(endpoint, options = {}){
     headers['Content-Type'] = 'application/json';
     body = JSON.stringify(body);
   }
-  const isLogin = endpoint === '/api/login' || endpoint.endsWith('/api/login');
-  if (!['GET','HEAD'].includes(method) && csrfToken && !isLogin){
+  if (!['GET','HEAD'].includes(method) && csrfToken && endpoint !== '/api/login'){
     headers['X-CSRF-Token'] = csrfToken;
   }
   let response;
   try {
-    response = await fetch(resolveUrl(endpoint), { method, headers, body, credentials:'same-origin' });
+    response = await fetch(endpoint, { method, headers, body, credentials:'same-origin' });
   } catch(e){
     throw new Error('Cannot connect to the portal server. Check that the backend is running.');
   }
   const isJson = (response.headers.get('content-type') || '').includes('application/json');
   const payload = isJson ? await response.json().catch(() => ({})) : {};
   if (!response.ok){
-    if (response.status === 401 && !isLogin){
+    if (response.status === 401 && endpoint !== '/api/login'){
       session = null; csrfToken = ''; links = []; events = []; announcements = [];
       showLogin();
     }
@@ -1076,15 +1119,15 @@ function canSeeCategory(cat){
   if (!session) return false;
   if (isAdmin()) return true;
   if (cat === "Policies") return true;              // policies are readable by everyone
-  return cat === session.team;                      // own team hub only
+  if (!session.team) return false;
+  const userTeam = String(session.team).toLowerCase().replace(/\s+team$/i, '').trim();
+  const catTeam = String(cat).toLowerCase().replace(/\s+team$/i, '').trim();
+  return userTeam === catTeam || String(session.team).toLowerCase().includes(catTeam) || String(cat).toLowerCase().includes(userTeam);
 }
 /* Which category pages can this user ADD / EDIT / DELETE inside? */
 function canEditCategory(cat){
   if (!session) return false;
-  if (isAdmin()) return true;                       // admin controls everything
-  if (cat === "Policies") return session.role === "hr_admin";
-  if (session.role === "team_admin" || session.role === "hr_admin") return cat === session.team;
-  return false;                                     // members are read-only
+  return isAdmin();                                 // System Admin manages everything; regular employees are read-only
 }
 /* Events and Announcements — admin only, for every other account. */
 const canEditEvents        = () => isAdmin();
@@ -1153,7 +1196,7 @@ function toast(msg){
 /* Opens a URL once in a separate tab without triggering a same-tab fallback. */
 function openInNewTab(url){
   const a = document.createElement('a');
-  a.href = resolveUrl(url);
+  a.href = url;
   a.target = '_blank';
   a.rel = 'noopener noreferrer';
   a.style.display = 'none';

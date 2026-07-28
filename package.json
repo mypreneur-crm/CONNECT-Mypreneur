@@ -9,6 +9,7 @@
     "start:env": "node --env-file=.env server.js",
     "check-db": "node --env-file=.env scripts/check-database.js",
     "test-login": "node --env-file=.env scripts/test-login.js",
+    "add-user": "node --env-file=.env scripts/add-user.js",
     "test": "node tests/unit-test.js"
   },
   "dependencies": {

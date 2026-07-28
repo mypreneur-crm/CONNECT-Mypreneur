@@ -6,28 +6,6 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { URL } = require('node:url');
 
-const envPath = path.join(__dirname, '.env');
-if (fs.existsSync(envPath)) {
-  try {
-    if (typeof process.loadEnvFile === 'function') {
-      process.loadEnvFile(envPath);
-    } else {
-      const lines = fs.readFileSync(envPath, 'utf8').split(/\r?\n/);
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (trimmed && !trimmed.startsWith('#') && trimmed.includes('=')) {
-          const idx = trimmed.indexOf('=');
-          const key = trimmed.slice(0, idx).trim();
-          const val = trimmed.slice(idx + 1).trim().replace(/^["']|["']$/g, '');
-          if (key && process.env[key] === undefined) {
-            process.env[key] = val;
-          }
-        }
-      }
-    }
-  } catch (e) {}
-}
-
 const { MySQLDatabase, databaseConfig } = require('./lib/database');
 const { LocalFileStore } = require('./lib/file-store');
 const { initializeSchema } = require('./lib/schema');
@@ -175,10 +153,7 @@ function canSeeCategory(user, category) {
 }
 
 function canEditCategory(user, category) {
-  if (!user) return false;
-  if (user.role === 'admin') return true;
-  if (category === 'Policies') return user.role === 'hr_admin';
-  return (user.role === 'team_admin' || user.role === 'hr_admin') && category === user.team;
+  return Boolean(user && user.role === 'admin');
 }
 
 function isAdmin(user) { return Boolean(user && user.role === 'admin'); }
@@ -494,7 +469,17 @@ async function handleApi(req, res, url) {
         ipAddress: ip,
         deviceInfo: req.headers['user-agent'] || ''
       });
-      return sendError(res, 401, 'Invalid username, password, role, or team assignment.', 'INVALID_CREDENTIALS');
+
+      let errorMsg = 'Invalid username, password, or account status.';
+      if (!row) {
+        errorMsg = `Username '${username}' was not found in the database.`;
+      } else if (!passwordMatches) {
+        errorMsg = `Incorrect password for '${username}'.`;
+      } else if (!row.active) {
+        errorMsg = `User account '${username}' is set to INACTIVE in the database.`;
+      }
+
+      return sendError(res, 401, errorMsg, 'INVALID_CREDENTIALS');
     }
 
     clearLoginFailures(attemptKey);
@@ -919,11 +904,6 @@ async function start() {
   server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
-      if (url.pathname.startsWith('/connect/')) {
-        url.pathname = url.pathname.slice('/connect'.length);
-      } else if (url.pathname === '/connect') {
-        url.pathname = '/';
-      }
       if (url.pathname.startsWith('/api/')) return await handleApi(req, res, url);
       if (!['GET', 'HEAD'].includes(req.method || 'GET')) return sendError(res, 405, 'Method not allowed.', 'METHOD_NOT_ALLOWED');
       return await serveStatic(req, res, url);

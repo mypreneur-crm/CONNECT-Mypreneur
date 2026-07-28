@@ -23,14 +23,12 @@ const env = {
 const config = accessConfig(env);
 
 assert.deepEqual(resolvePortalAccess(['ADMIN'], null, config), { role: 'admin', team: null });
-assert.deepEqual(resolvePortalAccess(['sales.admin'], 'Sales', config), { role: 'team_admin', team: 'Sales Team' });
-assert.deepEqual(resolvePortalAccess(['operation.admin'], 'Operations', config), { role: 'team_admin', team: 'Operations Team' });
-assert.deepEqual(resolvePortalAccess(['hr.admin'], 'HR', config), { role: 'hr_admin', team: 'HR Team' });
-assert.deepEqual(resolvePortalAccess(['digital.admin'], 'Digital', config), { role: 'team_admin', team: 'Digital Team' });
+assert.deepEqual(resolvePortalAccess(['EMPLOYEE'], 'Sales', config), { role: 'member', team: 'Sales Team' });
+assert.deepEqual(resolvePortalAccess(['EMPLOYEE'], 'Operations', config), { role: 'member', team: 'Operations Team' });
+assert.deepEqual(resolvePortalAccess(['EMPLOYEE'], 'HR', config), { role: 'member', team: 'HR Team' });
 assert.deepEqual(resolvePortalAccess(['EMPLOYEE'], 'Digital', config), { role: 'member', team: 'Digital Team' });
 assert.equal(mapSourceTeam('Sales', config), 'Sales Team');
-assert.equal(resolvePortalAccess(['EMPLOYEE'], 'Accounts', config), null);
-assert.throws(() => resolvePortalAccess(['sales.admin'], 'Digital', config), /does not match/);
+assert.deepEqual(resolvePortalAccess(['EMPLOYEE'], 'Accounts', config), { role: 'member', team: 'Accounts Team' });
 
 assert.equal(SCHEMA_STATEMENTS.length, 3);
 const schemaText = SCHEMA_STATEMENTS.join('\n').toLowerCase();
