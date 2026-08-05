@@ -970,6 +970,7 @@ const MENU = [
   { id:"announcements", label:"Announcements",    icon:"megaphone" },
   { id:"policies",      label:"Policies",         icon:"shield",   category:"Policies" },
   { id:"events",        label:"Events",           icon:"calendar" },
+  { id:"anonymous_feedback", label:"Anonymous Feedback", icon:"message" },
   { id:"sales",         label:"Sales Team",       icon:"chart",    category:"Sales Team" },
   { id:"operations",    label:"Operations Team",  icon:"cog",      category:"Operations Team" },
   { id:"hr",            label:"HR Team",          icon:"users",    category:"HR Team" },
@@ -1071,7 +1072,7 @@ async function apiRequest(endpoint, options = {}){
   const payload = isJson ? await response.json().catch(() => ({})) : {};
   if (!response.ok){
     if (response.status === 401 && endpoint !== '/api/login'){
-      session = null; csrfToken = ''; links = []; events = []; announcements = [];
+      session = null; csrfToken = ''; links = []; events = []; announcements = []; receivedFeedback = [];
       showLogin();
     }
     throw new Error(payload.error || ('Request failed (' + response.status + ')'));
@@ -1085,6 +1086,7 @@ async function loadPortalData(){
   links = Array.isArray(data.links) ? data.links : [];
   events = Array.isArray(data.events) ? data.events : [];
   announcements = Array.isArray(data.announcements) ? data.announcements : [];
+  receivedFeedback = Array.isArray(data.feedback) ? data.feedback : [];
   return data;
 }
 
@@ -1092,6 +1094,7 @@ async function loadPortalData(){
 let links = [];                                   // the "links" table
 let events = [];                                  // the "events" table
 let announcements = [];                           // the "announcements" table
+let receivedFeedback = [];                        // received anonymous feedback messages
 let session = null;                               // current login session
 
 const ROUTE_CATEGORY = { policies:"Policies", sales:"Sales Team", operations:"Operations Team", hr:"HR Team", digital:"Digital Team" };
@@ -1140,7 +1143,7 @@ const canUseLinkTools    = () => editableCategories().length > 0;
 /* Can this user open this route at all? */
 function canSeeRoute(r){
   if (!session) return false;
-  if (r === "dashboard" || r === "events" || r === "announcements") return true;
+  if (r === "dashboard" || r === "events" || r === "announcements" || r === "anonymous_feedback") return true;
   if (ROUTE_CATEGORY[r]) return canSeeCategory(ROUTE_CATEGORY[r]);
   if (r === "manage") return isAdmin();          // Manage All Links: admin only
   if (r === "add") return canUseLinkTools();
@@ -1287,7 +1290,7 @@ $('#pwToggle').addEventListener('click', () => {
 });
 async function logout(){
   try { await apiRequest('/api/logout', { method:'POST' }); } catch(e){}
-  session = null; csrfToken = ''; links = []; events = []; announcements = [];
+  session = null; csrfToken = ''; links = []; events = []; announcements = []; receivedFeedback = [];
   closeAllDropdowns();
   location.hash = '#/dashboard';
   showLogin();
@@ -1334,7 +1337,7 @@ function render(){
      sent back to the dashboard. location.replace() is used instead of setting
      location.hash so the blocked address does NOT become a history entry —
      otherwise the browser Back button gets stuck bouncing on the dashboard. */
-  const known = ['dashboard','events','announcements','manage','add'].includes(route) || !!ROUTE_CATEGORY[route];
+  const known = ['dashboard','events','announcements','manage','add','anonymous_feedback'].includes(route) || !!ROUTE_CATEGORY[route];
   if (route !== 'dashboard' && (!known || !canSeeRoute(route))){
     toast(known ? 'You do not have access to that section' : 'That page does not exist');
     goReplace('dashboard');
@@ -1345,6 +1348,7 @@ function render(){
   else if (route === 'manage') view.innerHTML = viewManage();
   else if (route === 'events') view.innerHTML = viewEvents();
   else if (route === 'announcements') view.innerHTML = viewAnnouncements();
+  else if (route === 'anonymous_feedback') view.innerHTML = viewAnonymousFeedback();
   else if (ROUTE_CATEGORY[route]) view.innerHTML = viewCategory(ROUTE_CATEGORY[route]);
   else { goReplace('dashboard'); return; }
   renderSidebar();
@@ -1356,6 +1360,7 @@ function render(){
     : route === 'manage' ? 'Manage All Links'
     : route === 'events' ? 'Events'
     : route === 'announcements' ? 'Announcements'
+    : route === 'anonymous_feedback' ? 'Anonymous Feedback'
     : (ROUTE_CATEGORY[route] || 'Portal');
   document.title = label + ' — Mypreneur Connect';
   window.scrollTo({ top: 0 });
@@ -1686,6 +1691,12 @@ function buildNotifications(){
         text:'New policy added ' + agoLabel(age) + ': ' + l.title });
   });
 
+  /* 5. Anonymous feedback received */
+  receivedFeedback.forEach(fb => {
+    out.push({ icon:'message', go:'anonymous_feedback', diff:0,
+      text:'New anonymous constructive feedback received — ' + fmtDate(fb.created_at) });
+  });
+
   /* what is coming up first, then what happened most recently */
   out.sort((a, b) => {
     const fa = a.diff >= 0, fb = b.diff >= 0;
@@ -1825,6 +1836,206 @@ function viewAdd(){
       <button id="addReset" class="btn btn-ghost">Reset</button>
     </div>
   </div>`;
+}
+
+function viewAnonymousFeedback() {
+  return `
+  <div class="page-head">
+    <div class="page-icon" style="background:var(--purple)">${ic('message')}</div>
+    <div>
+      <h2>Anonymous Feedback</h2>
+      <p>Send constructive peer feedback anonymously, or review feedback sent to you.</p>
+    </div>
+  </div>
+  
+  <div class="row-2">
+    <!-- Send Feedback Form -->
+    <div class="panel">
+      <div class="panel-head">
+        <h3 class="panel-title">Give Constructive Feedback</h3>
+      </div>
+      <div class="panel-body">
+        <div class="ro-note" style="background:var(--orange-tint); color:#C2410C; border-color:#FED7AA; margin-bottom: 15px;">
+          ${ic('shield','width:15px;height:15px')}
+          <span>This feedback is completely anonymous. The system does not save who sent it.</span>
+        </div>
+        
+        <div class="form-grid" style="grid-template-columns: 1fr;">
+          <div class="field">
+            <label for="af_to_user">To Employee *</label>
+            <select id="af_to_user">
+              <option value="">Loading employees...</option>
+            </select>
+            <div id="af_to_user_err" class="form-err">Please select an employee.</div>
+          </div>
+          
+          <div class="field">
+            <label for="af_strengths">1. Good Things / Strengths</label>
+            <textarea id="af_strengths" rows="4" placeholder="What are their key strengths? What do they do well?"></textarea>
+          </div>
+          
+          <div class="field">
+            <label for="af_improvements">2. Constructive Areas for Improvement</label>
+            <textarea id="af_improvements" rows="4" placeholder="What areas can they focus on to improve? Be specific and helpful."></textarea>
+          </div>
+          
+          <div class="field">
+            <label for="af_suggestions">3. Helpful Suggestion or Support</label>
+            <textarea id="af_suggestions" rows="4" placeholder="What suggestions do you have to help them grow?"></textarea>
+            <div id="af_content_err" class="form-err">Please fill in at least one feedback section.</div>
+          </div>
+        </div>
+        
+        <div class="form-actions" style="margin-top: 15px;">
+          <button id="af_send_btn" class="btn btn-primary btn-block">${ic('check','width:16px;height:16px')}Send Feedback</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Received Feedback List -->
+    <div class="panel">
+      <div class="panel-head">
+        <h3 class="panel-title">Feedback Received</h3>
+      </div>
+      <div class="panel-body" id="af_received_list" style="display:flex; flex-direction:column; gap:16px;">
+        <!-- Filled dynamically -->
+      </div>
+    </div>
+  </div>`;
+}
+
+let activeEmployees = [];
+async function loadActiveEmployees() {
+  if (activeEmployees.length > 0) return activeEmployees;
+  try {
+    const res = await apiRequest('/api/active-employees');
+    activeEmployees = res.employees || [];
+    return activeEmployees;
+  } catch (err) {
+    toast(err.message);
+    return [];
+  }
+}
+
+function renderReceivedFeedback() {
+  const list = $('#af_received_list');
+  if (!list) return;
+  if (!receivedFeedback.length) {
+    list.innerHTML = `
+      <div class="empty" style="border:none;padding:32px 16px">
+        <div class="eicon" style="background:var(--cyan-tint);color:var(--cyan)">${ic('message')}</div>
+        <p>No new feedback messages received.</p>
+      </div>`;
+    return;
+  }
+
+  list.innerHTML = receivedFeedback.map(fb => `
+    <div class="link-card" id="fb_card_${fb.id}" style="border-left: 4px solid var(--purple); gap: 14px; transform: none; box-shadow: none;">
+      <div class="lc-top">
+        <div class="lc-badges">
+          <span class="badge" style="background:var(--purple-tint);color:var(--purple);font-weight:700;">Received</span>
+        </div>
+        <span style="font-size:11.5px;color:#9CA3AF;">${fmtStamp(fb.created_at)}</span>
+      </div>
+      
+      <div style="display:flex;flex-direction:column;gap:10px;font-size:13.5px;">
+        <div>
+          <b style="color:var(--navy);display:block;margin-bottom:2px;">1. Good Things / Strengths:</b>
+          <p style="white-space:pre-wrap;color:var(--text);">${esc(fb.strengths || '—')}</p>
+        </div>
+        <div style="border-top:1px solid var(--border);padding-top:8px;">
+          <b style="color:var(--navy);display:block;margin-bottom:2px;">2. Constructive Areas for Improvement:</b>
+          <p style="white-space:pre-wrap;color:var(--text);">${esc(fb.improvements || '—')}</p>
+        </div>
+        <div style="border-top:1px solid var(--border);padding-top:8px;">
+          <b style="color:var(--navy);display:block;margin-bottom:2px;">3. Helpful Suggestion or Support:</b>
+          <p style="white-space:pre-wrap;color:var(--text);">${esc(fb.suggestions || '—')}</p>
+        </div>
+      </div>
+      
+      <div style="margin-top:10px;">
+        <button class="btn btn-ghost btn-block" style="border-color:var(--border);padding:8px 12px;font-size:13px;" data-readfb="${fb.id}">
+          ${ic('check','width:14px;height:14px;color:var(--green);vertical-align:-1px')} Mark as Read
+        </button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function initAnonymousFeedback() {
+  loadActiveEmployees().then(list => {
+    const select = $('#af_to_user');
+    if (select) {
+      select.innerHTML = '<option value="">Select Employee...</option>' +
+        list.filter(emp => emp.id !== session.id)
+        .map(emp => `<option value="${emp.id}">${esc(emp.first_name + ' ' + emp.last_name)} (${esc(emp.title || 'Team Member')})</option>`)
+        .join('');
+    }
+  });
+
+  renderReceivedFeedback();
+
+  const sendBtn = $('#af_send_btn');
+  if (sendBtn) {
+    sendBtn.addEventListener('click', handleSendAnonymousFeedback);
+  }
+}
+
+async function handleSendAnonymousFeedback() {
+  const toUserSelect = $('#af_to_user');
+  const strengthsInput = $('#af_strengths');
+  const improvementsInput = $('#af_improvements');
+  const suggestionsInput = $('#af_suggestions');
+  
+  const to_user_id = toUserSelect.value;
+  const strengths = strengthsInput.value.trim();
+  const improvements = improvementsInput.value.trim();
+  const suggestions = suggestionsInput.value.trim();
+  
+  let ok = true;
+  $('#af_to_user_err').classList.toggle('show', !to_user_id); if (!to_user_id) ok = false;
+  
+  const hasFeedback = strengths || improvements || suggestions;
+  $('#af_content_err').classList.toggle('show', !hasFeedback); if (!hasFeedback) ok = false;
+  
+  if (!ok) return;
+  
+  const btn = $('#af_send_btn');
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+  
+  try {
+    await apiRequest('/api/anonymous-feedback', {
+      method: 'POST',
+      body: { to_user_id: Number(to_user_id), strengths, improvements, suggestions }
+    });
+    
+    toUserSelect.value = '';
+    strengthsInput.value = '';
+    improvementsInput.value = '';
+    suggestionsInput.value = '';
+    
+    $('#af_to_user_err').classList.remove('show');
+    $('#af_content_err').classList.remove('show');
+    
+    toast('Anonymous feedback sent successfully!');
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Send Feedback';
+  }
+}
+
+async function handleMarkFeedbackRead(id) {
+  try {
+    await apiRequest('/api/anonymous-feedback/' + encodeURIComponent(id) + '/read', { method: 'PATCH' });
+    receivedFeedback = receivedFeedback.filter(x => x.id !== id);
+    toast('Feedback marked as read');
+    render();
+  } catch (err) {
+    toast(err.message);
+  }
 }
 
 const MAX_FILE_BYTES = 3 * 1024 * 1024;
@@ -2252,10 +2463,15 @@ function afterRender(route){
     $('#mCat').addEventListener('change', e => { manageCat = e.target.value; renderManageRows(); });
     $('#mStatus').addEventListener('change', e => { manageStatus = e.target.value; renderManageRows(); });
   }
+  if (route === 'anonymous_feedback'){
+    initAnonymousFeedback();
+  }
 }
 
 /* Delegated clicks: navigation + link actions */
 document.addEventListener('click', e => {
+  const readFb = e.target.closest('[data-readfb]');
+  if (readFb){ handleMarkFeedbackRead(readFb.dataset.readfb); return; }
   const goEl = e.target.closest('[data-go]');
   if (goEl){ closeAllDropdowns(); go(goEl.dataset.go); return; }
   const addFor = e.target.closest('[data-addfor]');
@@ -2390,7 +2606,7 @@ document.querySelectorAll('[data-ic]').forEach(el => { el.innerHTML = ic(el.data
     await loadPortalData();
     if (isAuthed()) showApp(); else showLogin();
   } catch(e){
-    session = null; csrfToken = ''; links = []; events = []; announcements = [];
+    session = null; csrfToken = ''; links = []; events = []; announcements = []; receivedFeedback = [];
     showLogin();
   }
 })();

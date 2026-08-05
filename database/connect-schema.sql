@@ -106,3 +106,16 @@ CREATE TABLE IF NOT EXISTS connect_login_attempts (
   PRIMARY KEY (attempt_key),
   KEY idx_connect_login_attempts_updated (updated_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS connect_annonymous_message (
+  id CHAR(36) NOT NULL,
+  to_user_id BIGINT UNSIGNED NOT NULL,
+  strengths TEXT NOT NULL,
+  improvements TEXT NOT NULL,
+  suggestions TEXT NOT NULL,
+  is_read TINYINT(1) NOT NULL DEFAULT 0,
+  created_at VARCHAR(35) NOT NULL,
+  PRIMARY KEY (id),
+  KEY idx_connect_anon_to_user (to_user_id),
+  KEY idx_connect_anon_unread (to_user_id, is_read)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
