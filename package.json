@@ -16,6 +16,9 @@
     "bcryptjs": "3.0.2",
     "mysql2": "3.23.1"
   },
+  "devDependencies": {
+    "ssh2": "^1.17.0"
+  },
   "engines": {
     "node": ">=22.5.0"
   }
