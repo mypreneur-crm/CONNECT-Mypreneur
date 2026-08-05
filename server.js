@@ -6,34 +6,9 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { URL } = require('node:url');
 
-// Auto-load .env file if DB_HOST is missing in environment
-const envFile = path.join(__dirname, '.env');
-if (!process.env.DB_HOST && fs.existsSync(envFile)) {
-  try {
-    const lines = fs.readFileSync(envFile, 'utf8').split(/\r?\n/);
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (trimmed && !trimmed.startsWith('#')) {
-        const eqIdx = trimmed.indexOf('=');
-        if (eqIdx > 0) {
-          const key = trimmed.slice(0, eqIdx).trim();
-          let val = trimmed.slice(eqIdx + 1).trim();
-          if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-            val = val.slice(1, -1);
-          }
-          if (!process.env[key]) {
-            process.env[key] = val;
-          }
-        }
-      }
-    }
-  } catch (envErr) {
-    console.error('Error loading .env file:', envErr.message);
-  }
-}
-
 const { MySQLDatabase, databaseConfig } = require('./lib/database');
 const { LocalFileStore } = require('./lib/file-store');
+const { initializeSchema } = require('./lib/schema');
 const { DatabaseAuthProvider, hashScryptPassword } = require('./lib/auth-provider');
 
 const PORT = Number(process.env.PORT || 3000);
@@ -76,6 +51,43 @@ function publicUser(row) {
     role: row.role,
     team: row.team || null
   };
+}
+
+function getEncryptionKey() {
+  const secret = String(sessionSecret || process.env.SESSION_SECRET || 'mypreneur_connect_local_secret_32chars_long_key_1234');
+  return crypto.createHash('sha256').update(secret).digest();
+}
+
+function encryptText(text) {
+  if (!text) return '';
+  const key = getEncryptionKey();
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  let encrypted = cipher.update(String(text), 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  const authTag = cipher.getAuthTag().toString('hex');
+  return `enc:v1:${iv.toString('hex')}:${authTag}:${encrypted}`;
+}
+
+function decryptText(encoded) {
+  if (!encoded) return '';
+  const str = String(encoded);
+  if (!str.startsWith('enc:v1:')) return str;
+  const parts = str.split(':');
+  if (parts.length !== 5) return str;
+  const [, , ivHex, tagHex, encryptedHex] = parts;
+  try {
+    const key = getEncryptionKey();
+    const iv = Buffer.from(ivHex, 'hex');
+    const authTag = Buffer.from(tagHex, 'hex');
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+    decipher.setAuthTag(authTag);
+    let decrypted = decipher.update(encryptedHex, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
+  } catch {
+    return '[Encrypted Message]';
+  }
 }
 
 function clientIp(req) {
@@ -384,6 +396,17 @@ async function listVisibleLinks(user) {
     .map(serializeLink);
 }
 
+function serializeFeedback(row) {
+  return {
+    id: row.id,
+    strengths: decryptText(row.strengths),
+    improvements: decryptText(row.improvements),
+    suggestions: decryptText(row.suggestions),
+    is_read: Number(row.is_read || 0),
+    created_at: row.created_at
+  };
+}
+
 async function bootstrapPayload(auth) {
   const [links, eventRows, announcementRows, feedbackRows] = await Promise.all([
     listVisibleLinks(auth.user),
@@ -391,8 +414,8 @@ async function bootstrapPayload(auth) {
       FROM events ORDER BY date ASC,time ASC,created_at ASC`),
     db.all(`SELECT id,title,date,time,body,kind,link,file_name,file_type,file_size,author,created_at,updated_at
       FROM announcements ORDER BY date DESC,time DESC,created_at DESC`),
-    db.all(`SELECT id, strengths, improvements, suggestions, is_read, created_at
-      FROM annonymous_message WHERE to_user_id=? AND is_read=0 ORDER BY created_at DESC`, [auth.user.id])
+    db.all(`SELECT id,strengths,improvements,suggestions,is_read,created_at
+      FROM annonymous_message WHERE to_user_id=? ORDER BY created_at DESC`, [auth.user.id])
   ]);
   return {
     user: auth.user,
@@ -400,7 +423,7 @@ async function bootstrapPayload(auth) {
     links,
     events: eventRows.map(serializeEvent),
     announcements: announcementRows.map(serializeAnnouncement),
-    feedback: feedbackRows,
+    feedback: (feedbackRows || []).map(serializeFeedback),
     categories: CATEGORIES,
     serverTime: nowIso()
   };
@@ -860,64 +883,68 @@ async function handleApi(req, res, url) {
     return sendStoredFile(res, row);
   }
 
-  if (method === 'GET' && pathname === '/api/active-employees') {
+  /* ============ ANONYMOUS GROWTH CORNER ============ */
+
+  if (method === 'GET' && pathname === '/api/feedback') {
     const auth = await requireAuth(req, res);
     if (!auth) return;
-    const employees = await db.all(`
-      SELECT u.user_id AS id, e.first_name, e.last_name, e.designation AS title
-      FROM ${authProvider.schema.usersTable} u
-      JOIN ${authProvider.schema.employeesTable} e ON e.employee_id = u.employee_id
-      WHERE e.status = 'ACTIVE' AND u.is_active = 1
-      ORDER BY e.first_name ASC, e.last_name ASC
-    `);
-    return sendJson(res, 200, { employees });
+    const rows = await db.all(`SELECT id,strengths,improvements,suggestions,is_read,created_at
+      FROM annonymous_message WHERE to_user_id=? ORDER BY created_at DESC`, [auth.user.id]);
+    return sendJson(res, 200, { feedback: (rows || []).map(serializeFeedback) });
   }
 
-  if (method === 'POST' && pathname === '/api/anonymous-feedback') {
+  if (method === 'POST' && pathname === '/api/feedback') {
     const auth = await requireAuth(req, res, { csrf: true });
     if (!auth) return;
     const body = await readJson(req);
-    const to_user_id = Number(body.to_user_id);
-    if (!to_user_id || !Number.isInteger(to_user_id)) {
-      return sendError(res, 400, 'Please select a valid recipient.', 'VALIDATION');
+    const toUserId = Number(body.to_user_id);
+    if (!Number.isInteger(toUserId) || toUserId < 1) {
+      return sendError(res, 400, 'Please select an employee to send feedback to.', 'VALIDATION');
     }
-    const strengths = cleanText(body.strengths || '', 5000);
-    const improvements = cleanText(body.improvements || '', 5000);
-    const suggestions = cleanText(body.suggestions || '', 5000);
-    if (!strengths && !improvements && !suggestions) {
-      return sendError(res, 400, 'Please provide at least one feedback section.', 'VALIDATION');
-    }
-
-    const recipient = await db.get(`
-      SELECT u.user_id FROM ${authProvider.schema.usersTable} u
-      JOIN ${authProvider.schema.employeesTable} e ON e.employee_id = u.employee_id
-      WHERE u.user_id=? AND e.status='ACTIVE' AND u.is_active=1
-    `, [to_user_id]);
-    if (!recipient) {
-      return sendError(res, 400, 'Selected recipient is invalid or inactive.', 'VALIDATION');
-    }
-
+    const strengths = cleanText(body.strengths, 5000, true);
+    const improvements = cleanText(body.improvements, 5000, true);
+    const suggestions = cleanText(body.suggestions, 5000, true);
     const id = crypto.randomUUID();
     const stamp = nowIso();
-    await db.run(`
-      INSERT INTO annonymous_message (id, to_user_id, strengths, improvements, suggestions, is_read, created_at)
-      VALUES (?, ?, ?, ?, ?, 0, ?)
-    `, [id, to_user_id, strengths, improvements, suggestions, stamp]);
-
+    const encStrengths = encryptText(strengths);
+    const encImprovements = encryptText(improvements);
+    const encSuggestions = encryptText(suggestions);
+    await db.run(`INSERT INTO annonymous_message (id,to_user_id,strengths,improvements,suggestions,is_read,created_at)
+      VALUES (?,?,?,?,?,0,?)`, [id, toUserId, encStrengths, encImprovements, encSuggestions, stamp]);
     return sendJson(res, 201, { ok: true });
   }
 
-  match = pathname.match(/^\/api\/anonymous-feedback\/([^/]+)\/read$/);
-  if (match && method === 'PATCH') {
+  if (method === 'GET' && pathname === '/api/employees/active') {
+    const auth = await requireAuth(req, res);
+    if (!auth) return;
+    const t = authProvider.schema;
+    const rows = await db.all(`SELECT u.user_id AS id, u.username,
+        e.first_name, e.last_name, e.designation AS title
+      FROM ${t.usersTable} u
+      LEFT JOIN ${t.employeesTable} e ON e.employee_id=u.employee_id
+      WHERE u.is_active=1 AND (e.status IS NULL OR UPPER(e.status)='ACTIVE')
+      ORDER BY e.first_name ASC, e.last_name ASC, u.username ASC`);
+    const list = rows.map(r => ({
+      id: Number(r.id),
+      name: [r.first_name, r.last_name].filter(Boolean).join(' ').trim() || r.username,
+      title: r.title || ''
+    })).filter(r => r.id !== auth.user.id);
+    return sendJson(res, 200, { employees: list });
+  }
+
+  match = pathname.match(/^\/api\/feedback\/([^/]+)\/read$/);
+  if (match && (method === 'PATCH' || method === 'POST')) {
     const auth = await requireAuth(req, res, { csrf: true });
     if (!auth) return;
     const id = decodeURIComponent(match[1]);
-    const result = await db.run(`
-      UPDATE annonymous_message SET is_read=1 WHERE id=? AND to_user_id=?
-    `, [id, auth.user.id]);
-    if (result.changes === 0) {
-      return sendError(res, 404, 'Feedback message not found or already read.', 'NOT_FOUND');
-    }
+    await db.run(`UPDATE annonymous_message SET is_read=1 WHERE id=? AND to_user_id=?`, [id, auth.user.id]);
+    return sendJson(res, 200, { ok: true });
+  }
+
+  if (method === 'PATCH' && pathname === '/api/feedback/read') {
+    const auth = await requireAuth(req, res, { csrf: true });
+    if (!auth) return;
+    await db.run(`UPDATE annonymous_message SET is_read=1 WHERE to_user_id=? AND is_read=0`, [auth.user.id]);
     return sendJson(res, 200, { ok: true });
   }
 
@@ -979,6 +1006,7 @@ async function start() {
   await fileStore.init();
   db = new MySQLDatabase(databaseConfig());
   await db.ready;
+  await initializeSchema(db);
   sessionSecret = String(process.env.SESSION_SECRET || '');
   if (sessionSecret.length < 32) {
     const error = new Error('SESSION_SECRET must be at least 32 characters.');

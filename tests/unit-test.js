@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 
+const { SCHEMA_STATEMENTS } = require('../lib/schema');
 const { resolvePortalAccess, accessConfig, mapSourceTeam, hashScryptPassword, verifyScryptPassword, DatabaseAuthProvider } = require('../lib/auth-provider');
 
 const env = {
@@ -29,6 +30,15 @@ assert.deepEqual(resolvePortalAccess(['EMPLOYEE'], 'Digital', config), { role: '
 assert.equal(mapSourceTeam('Sales', config), 'Sales Team');
 assert.deepEqual(resolvePortalAccess(['EMPLOYEE'], 'Accounts', config), { role: 'member', team: 'Accounts Team' });
 
+assert.equal(SCHEMA_STATEMENTS.length, 4);
+const schemaText = SCHEMA_STATEMENTS.join('\n').toLowerCase();
+for (const forbidden of ['role_mappings', 'audit_logs', 'login_attempts', 'sessions', 'users']) {
+  assert.equal(schemaText.includes(forbidden), false, `Schema must not create ${forbidden}`);
+}
+for (const required of ['create table if not exists links', 'create table if not exists events', 'create table if not exists announcements', 'create table if not exists annonymous_message']) {
+  assert.equal(schemaText.includes(required), true, `Missing ${required}`);
+}
+
 (async () => {
   const encoded = await hashScryptPassword('StrongPassword@2026');
   assert.equal(await verifyScryptPassword('StrongPassword@2026', encoded), true);
@@ -43,7 +53,8 @@ assert.deepEqual(resolvePortalAccess(['EMPLOYEE'], 'Accounts', config), { role: 
   const root = path.resolve(__dirname, '..');
   const source = [
     fs.readFileSync(path.join(root, 'server.js'), 'utf8'),
-    fs.readFileSync(path.join(root, 'lib', 'auth-provider.js'), 'utf8')
+    fs.readFileSync(path.join(root, 'lib', 'auth-provider.js'), 'utf8'),
+    fs.readFileSync(path.join(root, 'lib', 'schema.js'), 'utf8')
   ].join('\n');
   for (const forbidden of ['Jinjaa@12390', 'Sales@2026', 'Ops@2026', 'connect_role_mappings', 'connect_audit_logs']) {
     assert.equal(source.includes(forbidden), false, `Source contains forbidden value: ${forbidden}`);

@@ -637,6 +637,60 @@ td .t-url{
 .toast.show{transform:translate(-50%,0);opacity:1}
 .toast svg{width:17px;height:17px;color:var(--green)}
 
+/* ============ ANONYMOUS GROWTH CORNER ============ */
+.growth-note{
+  display:flex;align-items:flex-start;gap:11px;margin-bottom:20px;padding:14px 18px;
+  background:linear-gradient(135deg,#F5F3FF 0%,#EDE9FE 100%);color:#5B21B6;
+  border:1px solid #DDD6FE;border-radius:14px;font-size:13.5px;font-weight:500;line-height:1.55;
+}
+.growth-note svg{flex-shrink:0;margin-top:2px}
+.fb-card{
+  background:var(--card);border:1px solid var(--border);border-radius:15px;padding:22px;
+  transition:transform .18s, box-shadow .18s;margin-bottom:14px;
+}
+.fb-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
+.fb-card-head{
+  display:flex;align-items:center;gap:10px;margin-bottom:16px;padding-bottom:14px;
+  border-bottom:1px solid var(--border);
+}
+.fb-avatar{
+  width:40px;height:40px;border-radius:50%;
+  background:linear-gradient(135deg,var(--purple),#A78BFA);color:#fff;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.fb-avatar svg{width:20px;height:20px}
+.fb-sender{font-weight:700;font-size:14px;color:var(--text)}
+.fb-sender small{display:block;font-weight:500;font-size:12px;color:var(--muted);margin-top:2px}
+.fb-time{margin-left:auto;font-size:12px;color:var(--muted);white-space:nowrap}
+.fb-section{margin-bottom:14px}
+.fb-section:last-child{margin-bottom:0}
+.fb-label{
+  display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.5px;margin-bottom:7px;padding:4px 10px;
+  border-radius:8px;
+}
+.fb-label.str{background:var(--green-tint);color:#15803D}
+.fb-label.imp{background:#FEF3C7;color:#A16207}
+.fb-label.sug{background:var(--blue-tint);color:#1D4ED8}
+.fb-text{font-size:14px;color:#334155;line-height:1.6;white-space:pre-wrap;word-break:break-word}
+.fb-add-btn{
+  width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,var(--purple),#7C3AED);
+  color:#fff;display:flex;align-items:center;justify-content:center;
+  box-shadow:0 6px 18px -4px rgba(124,58,237,.45);transition:transform .15s,box-shadow .15s;
+}
+.fb-add-btn:hover{transform:translateY(-2px) scale(1.05);box-shadow:0 10px 24px -4px rgba(124,58,237,.55)}
+.fb-add-btn svg{width:22px;height:22px}
+.fb-empty{
+  border:2px dashed var(--border);border-radius:16px;background:var(--card);
+  padding:52px 24px;text-align:center;color:var(--muted);
+}
+.fb-empty .eicon{
+  width:56px;height:56px;border-radius:16px;background:var(--purple-tint);color:var(--purple);
+  display:inline-flex;align-items:center;justify-content:center;margin-bottom:14px;
+}
+.fb-empty .eicon svg{width:26px;height:26px}
+.fb-empty p{font-size:14px}
+
 /* ============ RESPONSIVE ============ */
 @media (max-width:1160px){
   .grid-4{grid-template-columns:repeat(2,1fr)}
@@ -941,6 +995,46 @@ td .t-url{
   </div>
 </div>
 
+<!-- ================= ANONYMOUS FEEDBACK MODAL ================= -->
+<div id="fbOverlay" class="overlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="fbTitle">
+    <div class="modal-head">
+      <h3 id="fbTitle">Send Anonymous Feedback</h3>
+      <button class="icon-btn" id="fbClose" aria-label="Close"></button>
+    </div>
+    <div class="growth-note" style="margin-bottom:20px">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      <span>This feedback is only for growth and improvement. Please do not take it personally.</span>
+    </div>
+    <div class="form-grid">
+      <div class="field full">
+        <label for="fb_to">To *</label>
+        <select id="fb_to"><option value="">Loading employees...</option></select>
+        <div id="fb_to_err" class="form-err">Please select an employee.</div>
+      </div>
+      <div class="field full">
+        <label for="fb_strengths">What are this employee's good qualities or strengths? *</label>
+        <textarea id="fb_strengths" rows="3" maxlength="5000" placeholder="Share what this person does well..."></textarea>
+        <div id="fb_str_err" class="form-err">This field is required.</div>
+      </div>
+      <div class="field full">
+        <label for="fb_improvements">What areas could they improve constructively? *</label>
+        <textarea id="fb_improvements" rows="3" maxlength="5000" placeholder="Suggest areas for growth..."></textarea>
+        <div id="fb_imp_err" class="form-err">This field is required.</div>
+      </div>
+      <div class="field full">
+        <label for="fb_suggestions">What helpful suggestions or support would you like to offer? *</label>
+        <textarea id="fb_suggestions" rows="3" maxlength="5000" placeholder="Offer constructive advice or support..."></textarea>
+        <div id="fb_sug_err" class="form-err">This field is required.</div>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button id="fbSave" class="btn btn-primary">Submit Feedback</button>
+      <button id="fbCancel" class="btn btn-ghost">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast" class="toast" role="status"></div>
 
 <script>
@@ -970,11 +1064,11 @@ const MENU = [
   { id:"announcements", label:"Announcements",    icon:"megaphone" },
   { id:"policies",      label:"Policies",         icon:"shield",   category:"Policies" },
   { id:"events",        label:"Events",           icon:"calendar" },
-  { id:"anonymous_feedback", label:"Anonymous Feedback", icon:"message" },
   { id:"sales",         label:"Sales Team",       icon:"chart",    category:"Sales Team" },
   { id:"operations",    label:"Operations Team",  icon:"cog",      category:"Operations Team" },
   { id:"hr",            label:"HR Team",          icon:"users",    category:"HR Team" },
   { id:"digital",       label:"Digital Team",     icon:"monitor",  category:"Digital Team" },
+  { id:"growth",        label:"Growth Corner",    icon:"message" },
   { id:"manage",        label:"Manage All Links", icon:"list" },
   { id:"add",           label:"Add Link",         icon:"plus" }
 ];
@@ -1072,7 +1166,7 @@ async function apiRequest(endpoint, options = {}){
   const payload = isJson ? await response.json().catch(() => ({})) : {};
   if (!response.ok){
     if (response.status === 401 && endpoint !== '/api/login'){
-      session = null; csrfToken = ''; links = []; events = []; announcements = []; receivedFeedback = [];
+      session = null; csrfToken = ''; links = []; events = []; announcements = [];
       showLogin();
     }
     throw new Error(payload.error || ('Request failed (' + response.status + ')'));
@@ -1086,7 +1180,7 @@ async function loadPortalData(){
   links = Array.isArray(data.links) ? data.links : [];
   events = Array.isArray(data.events) ? data.events : [];
   announcements = Array.isArray(data.announcements) ? data.announcements : [];
-  receivedFeedback = Array.isArray(data.feedback) ? data.feedback : [];
+  feedback = Array.isArray(data.feedback) ? data.feedback : [];
   return data;
 }
 
@@ -1094,7 +1188,8 @@ async function loadPortalData(){
 let links = [];                                   // the "links" table
 let events = [];                                  // the "events" table
 let announcements = [];                           // the "announcements" table
-let receivedFeedback = [];                        // received anonymous feedback messages
+let feedback = [];                                // anonymous growth corner feedback
+let activeEmployees = [];                         // cached employee list for feedback form
 let session = null;                               // current login session
 
 const ROUTE_CATEGORY = { policies:"Policies", sales:"Sales Team", operations:"Operations Team", hr:"HR Team", digital:"Digital Team" };
@@ -1143,7 +1238,7 @@ const canUseLinkTools    = () => editableCategories().length > 0;
 /* Can this user open this route at all? */
 function canSeeRoute(r){
   if (!session) return false;
-  if (r === "dashboard" || r === "events" || r === "announcements" || r === "anonymous_feedback") return true;
+  if (r === "dashboard" || r === "events" || r === "announcements" || r === "growth") return true;
   if (ROUTE_CATEGORY[r]) return canSeeCategory(ROUTE_CATEGORY[r]);
   if (r === "manage") return isAdmin();          // Manage All Links: admin only
   if (r === "add") return canUseLinkTools();
@@ -1235,9 +1330,29 @@ function showLogin(){
   $('#lp').value = '';
   setTimeout(() => $('#lu').focus(), 50);
 }
+let notifiedIds = new Set();
+function requestDesktopNotificationPermission(){
+  if ('Notification' in window && Notification.permission === 'default'){
+    Notification.requestPermission();
+  }
+}
+function showSystemNotification(title, text){
+  if (!('Notification' in window)) return;
+  if (Notification.permission === 'granted'){
+    try {
+      new Notification(title, {
+        body: text,
+        icon: '/logo.png',
+        tag: text
+      });
+    } catch(e){}
+  }
+}
+
 function showApp(){
   $('#loginPage').hidden = true;
   $('#app').hidden = false;
+  requestDesktopNotificationPermission();
   paintProfile();
   renderSidebar();
   render();
@@ -1290,7 +1405,7 @@ $('#pwToggle').addEventListener('click', () => {
 });
 async function logout(){
   try { await apiRequest('/api/logout', { method:'POST' }); } catch(e){}
-  session = null; csrfToken = ''; links = []; events = []; announcements = []; receivedFeedback = [];
+  session = null; csrfToken = ''; links = []; events = []; announcements = []; feedback = []; activeEmployees = [];
   closeAllDropdowns();
   location.hash = '#/dashboard';
   showLogin();
@@ -1337,7 +1452,7 @@ function render(){
      sent back to the dashboard. location.replace() is used instead of setting
      location.hash so the blocked address does NOT become a history entry —
      otherwise the browser Back button gets stuck bouncing on the dashboard. */
-  const known = ['dashboard','events','announcements','manage','add','anonymous_feedback'].includes(route) || !!ROUTE_CATEGORY[route];
+  const known = ['dashboard','events','announcements','manage','add','growth'].includes(route) || !!ROUTE_CATEGORY[route];
   if (route !== 'dashboard' && (!known || !canSeeRoute(route))){
     toast(known ? 'You do not have access to that section' : 'That page does not exist');
     goReplace('dashboard');
@@ -1348,7 +1463,7 @@ function render(){
   else if (route === 'manage') view.innerHTML = viewManage();
   else if (route === 'events') view.innerHTML = viewEvents();
   else if (route === 'announcements') view.innerHTML = viewAnnouncements();
-  else if (route === 'anonymous_feedback') view.innerHTML = viewAnonymousFeedback();
+  else if (route === 'growth') view.innerHTML = viewGrowth();
   else if (ROUTE_CATEGORY[route]) view.innerHTML = viewCategory(ROUTE_CATEGORY[route]);
   else { goReplace('dashboard'); return; }
   renderSidebar();
@@ -1360,7 +1475,7 @@ function render(){
     : route === 'manage' ? 'Manage All Links'
     : route === 'events' ? 'Events'
     : route === 'announcements' ? 'Announcements'
-    : route === 'anonymous_feedback' ? 'Anonymous Feedback'
+    : route === 'growth' ? 'Growth Corner'
     : (ROUTE_CATEGORY[route] || 'Portal');
   document.title = label + ' — Mypreneur Connect';
   window.scrollTo({ top: 0 });
@@ -1691,10 +1806,14 @@ function buildNotifications(){
         text:'New policy added ' + agoLabel(age) + ': ' + l.title });
   });
 
-  /* 5. Anonymous feedback received */
-  receivedFeedback.forEach(fb => {
-    out.push({ icon:'message', go:'anonymous_feedback', diff:0,
-      text:'New anonymous constructive feedback received — ' + fmtDate(fb.created_at) });
+  /* 5. Anonymous Growth Corner feedback received */
+  feedback.forEach(fb => {
+    const c = new Date(fb.created_at);
+    if (isNaN(c)) return;
+    const age = Math.floor((new Date() - c) / 86400000);
+    if (age >= 0 && age <= NOTIFY_DAYS)
+      out.push({ icon:'message', go:'growth', diff:-age, id:'fb_' + fb.id,
+        text:'New anonymous growth feedback received ' + agoLabel(age) });
   });
 
   /* what is coming up first, then what happened most recently */
@@ -1716,6 +1835,15 @@ function renderNotifications(){
   list.innerHTML = items.length
     ? items.map(n => '<button type="button" class="dd-note" data-go="' + n.go + '"><div class="nicon">' + ic(n.icon) + '</div><div>' + esc(n.text) + '</div></button>').join('')
     : '<div class="dd-note"><div class="nicon">' + ic('bell') + '</div><div>No new notifications right now.</div></div>';
+
+  /* Trigger Windows system notification pop-ups for new items */
+  items.forEach(n => {
+    const key = n.id || n.text;
+    if (!notifiedIds.has(key)){
+      notifiedIds.add(key);
+      showSystemNotification('Mypreneur Connect', n.text);
+    }
+  });
 }
 
 /* ---------- Category pages ---------- */
@@ -1836,206 +1964,6 @@ function viewAdd(){
       <button id="addReset" class="btn btn-ghost">Reset</button>
     </div>
   </div>`;
-}
-
-function viewAnonymousFeedback() {
-  return `
-  <div class="page-head">
-    <div class="page-icon" style="background:var(--purple)">${ic('message')}</div>
-    <div>
-      <h2>Anonymous Feedback</h2>
-      <p>Send constructive peer feedback anonymously, or review feedback sent to you.</p>
-    </div>
-  </div>
-  
-  <div class="row-2">
-    <!-- Send Feedback Form -->
-    <div class="panel">
-      <div class="panel-head">
-        <h3 class="panel-title">Give Constructive Feedback</h3>
-      </div>
-      <div class="panel-body">
-        <div class="ro-note" style="background:var(--orange-tint); color:#C2410C; border-color:#FED7AA; margin-bottom: 15px;">
-          ${ic('shield','width:15px;height:15px')}
-          <span>This feedback is completely anonymous. The system does not save who sent it.</span>
-        </div>
-        
-        <div class="form-grid" style="grid-template-columns: 1fr;">
-          <div class="field">
-            <label for="af_to_user">To Employee *</label>
-            <select id="af_to_user">
-              <option value="">Loading employees...</option>
-            </select>
-            <div id="af_to_user_err" class="form-err">Please select an employee.</div>
-          </div>
-          
-          <div class="field">
-            <label for="af_strengths">1. Good Things / Strengths</label>
-            <textarea id="af_strengths" rows="4" placeholder="What are their key strengths? What do they do well?"></textarea>
-          </div>
-          
-          <div class="field">
-            <label for="af_improvements">2. Constructive Areas for Improvement</label>
-            <textarea id="af_improvements" rows="4" placeholder="What areas can they focus on to improve? Be specific and helpful."></textarea>
-          </div>
-          
-          <div class="field">
-            <label for="af_suggestions">3. Helpful Suggestion or Support</label>
-            <textarea id="af_suggestions" rows="4" placeholder="What suggestions do you have to help them grow?"></textarea>
-            <div id="af_content_err" class="form-err">Please fill in at least one feedback section.</div>
-          </div>
-        </div>
-        
-        <div class="form-actions" style="margin-top: 15px;">
-          <button id="af_send_btn" class="btn btn-primary btn-block">${ic('check','width:16px;height:16px')}Send Feedback</button>
-        </div>
-      </div>
-    </div>
-    
-    <!-- Received Feedback List -->
-    <div class="panel">
-      <div class="panel-head">
-        <h3 class="panel-title">Feedback Received</h3>
-      </div>
-      <div class="panel-body" id="af_received_list" style="display:flex; flex-direction:column; gap:16px;">
-        <!-- Filled dynamically -->
-      </div>
-    </div>
-  </div>`;
-}
-
-let activeEmployees = [];
-async function loadActiveEmployees() {
-  if (activeEmployees.length > 0) return activeEmployees;
-  try {
-    const res = await apiRequest('/api/active-employees');
-    activeEmployees = res.employees || [];
-    return activeEmployees;
-  } catch (err) {
-    toast(err.message);
-    return [];
-  }
-}
-
-function renderReceivedFeedback() {
-  const list = $('#af_received_list');
-  if (!list) return;
-  if (!receivedFeedback.length) {
-    list.innerHTML = `
-      <div class="empty" style="border:none;padding:32px 16px">
-        <div class="eicon" style="background:var(--cyan-tint);color:var(--cyan)">${ic('message')}</div>
-        <p>No new feedback messages received.</p>
-      </div>`;
-    return;
-  }
-
-  list.innerHTML = receivedFeedback.map(fb => `
-    <div class="link-card" id="fb_card_${fb.id}" style="border-left: 4px solid var(--purple); gap: 14px; transform: none; box-shadow: none;">
-      <div class="lc-top">
-        <div class="lc-badges">
-          <span class="badge" style="background:var(--purple-tint);color:var(--purple);font-weight:700;">Received</span>
-        </div>
-        <span style="font-size:11.5px;color:#9CA3AF;">${fmtStamp(fb.created_at)}</span>
-      </div>
-      
-      <div style="display:flex;flex-direction:column;gap:10px;font-size:13.5px;">
-        <div>
-          <b style="color:var(--navy);display:block;margin-bottom:2px;">1. Good Things / Strengths:</b>
-          <p style="white-space:pre-wrap;color:var(--text);">${esc(fb.strengths || '—')}</p>
-        </div>
-        <div style="border-top:1px solid var(--border);padding-top:8px;">
-          <b style="color:var(--navy);display:block;margin-bottom:2px;">2. Constructive Areas for Improvement:</b>
-          <p style="white-space:pre-wrap;color:var(--text);">${esc(fb.improvements || '—')}</p>
-        </div>
-        <div style="border-top:1px solid var(--border);padding-top:8px;">
-          <b style="color:var(--navy);display:block;margin-bottom:2px;">3. Helpful Suggestion or Support:</b>
-          <p style="white-space:pre-wrap;color:var(--text);">${esc(fb.suggestions || '—')}</p>
-        </div>
-      </div>
-      
-      <div style="margin-top:10px;">
-        <button class="btn btn-ghost btn-block" style="border-color:var(--border);padding:8px 12px;font-size:13px;" data-readfb="${fb.id}">
-          ${ic('check','width:14px;height:14px;color:var(--green);vertical-align:-1px')} Mark as Read
-        </button>
-      </div>
-    </div>
-  `).join('');
-}
-
-function initAnonymousFeedback() {
-  loadActiveEmployees().then(list => {
-    const select = $('#af_to_user');
-    if (select) {
-      select.innerHTML = '<option value="">Select Employee...</option>' +
-        list.filter(emp => emp.id !== session.id)
-        .map(emp => `<option value="${emp.id}">${esc(emp.first_name + ' ' + emp.last_name)} (${esc(emp.title || 'Team Member')})</option>`)
-        .join('');
-    }
-  });
-
-  renderReceivedFeedback();
-
-  const sendBtn = $('#af_send_btn');
-  if (sendBtn) {
-    sendBtn.addEventListener('click', handleSendAnonymousFeedback);
-  }
-}
-
-async function handleSendAnonymousFeedback() {
-  const toUserSelect = $('#af_to_user');
-  const strengthsInput = $('#af_strengths');
-  const improvementsInput = $('#af_improvements');
-  const suggestionsInput = $('#af_suggestions');
-  
-  const to_user_id = toUserSelect.value;
-  const strengths = strengthsInput.value.trim();
-  const improvements = improvementsInput.value.trim();
-  const suggestions = suggestionsInput.value.trim();
-  
-  let ok = true;
-  $('#af_to_user_err').classList.toggle('show', !to_user_id); if (!to_user_id) ok = false;
-  
-  const hasFeedback = strengths || improvements || suggestions;
-  $('#af_content_err').classList.toggle('show', !hasFeedback); if (!hasFeedback) ok = false;
-  
-  if (!ok) return;
-  
-  const btn = $('#af_send_btn');
-  btn.disabled = true;
-  btn.textContent = 'Sending...';
-  
-  try {
-    await apiRequest('/api/anonymous-feedback', {
-      method: 'POST',
-      body: { to_user_id: Number(to_user_id), strengths, improvements, suggestions }
-    });
-    
-    toUserSelect.value = '';
-    strengthsInput.value = '';
-    improvementsInput.value = '';
-    suggestionsInput.value = '';
-    
-    $('#af_to_user_err').classList.remove('show');
-    $('#af_content_err').classList.remove('show');
-    
-    toast('Anonymous feedback sent successfully!');
-  } catch (err) {
-    toast(err.message);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Send Feedback';
-  }
-}
-
-async function handleMarkFeedbackRead(id) {
-  try {
-    await apiRequest('/api/anonymous-feedback/' + encodeURIComponent(id) + '/read', { method: 'PATCH' });
-    receivedFeedback = receivedFeedback.filter(x => x.id !== id);
-    toast('Feedback marked as read');
-    render();
-  } catch (err) {
-    toast(err.message);
-  }
 }
 
 const MAX_FILE_BYTES = 3 * 1024 * 1024;
@@ -2441,6 +2369,106 @@ $('#confirmDelete').addEventListener('click', async () => {
 $('#confirmCancel').addEventListener('click', closeConfirm);
 $('#confirmOverlay').addEventListener('click', e => { if (e.target === $('#confirmOverlay')) closeConfirm(); });
 
+/* ---------- Anonymous Growth Corner ---------- */
+function feedbackCard(fb){
+  const isRead = Number(fb.is_read || 0) === 1;
+  const readAction = isRead
+    ? '<span class="status-pill off" style="font-size:11px;background:#F1F5F9;color:var(--muted)">' + ic('check','width:12px;height:12px;vertical-align:-1px') + ' Read</span>'
+    : '<button class="btn btn-ghost" style="padding:5px 11px;font-size:12px;display:inline-flex;align-items:center;gap:5px;border-color:var(--border)" data-markread="' + fb.id + '">' + ic('check','width:13px;height:13px') + ' Mark as Read</button>';
+
+  return `<div class="fb-card" id="fb-card-${fb.id}">
+    <div class="fb-card-head">
+      <div class="fb-avatar">${ic('users')}</div>
+      <div class="fb-sender">Feedback given by: ANONYMOUS<small>Growth feedback for you</small></div>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:12px">
+        <span class="fb-time">${ic('clock','width:12px;height:12px;vertical-align:-1px')} ${fmtStamp(fb.created_at)}</span>
+        ${readAction}
+      </div>
+    </div>
+    <div class="fb-section">
+      <div class="fb-label str">${ic('check','width:12px;height:12px')} Good Things / Strengths</div>
+      <div class="fb-text">${esc(fb.strengths)}</div>
+    </div>
+    <div class="fb-section">
+      <div class="fb-label imp">${ic('edit','width:12px;height:12px')} Constructive Areas for Improvement</div>
+      <div class="fb-text">${esc(fb.improvements)}</div>
+    </div>
+    <div class="fb-section">
+      <div class="fb-label sug">${ic('message','width:12px;height:12px')} Helpful Suggestions or Support</div>
+      <div class="fb-text">${esc(fb.suggestions)}</div>
+    </div>
+  </div>`;
+}
+
+function viewGrowth(){
+  const list = feedback || [];
+  const body = list.length
+    ? list.map(feedbackCard).join('')
+    : `<div class="fb-empty"><div class="eicon">${ic('message')}</div>
+        <p>No feedback received yet. When a colleague sends you anonymous feedback, it will appear here.</p></div>`;
+  return `
+  <div class="page-head">
+    <div class="page-icon" style="background:var(--purple)">${ic('message')}</div>
+    <div><h2>Anonymous Growth Corner</h2><p>View anonymous feedback shared by your colleagues to help you grow.</p></div>
+    <span class="count-pill">${list.length} feedback${list.length === 1 ? '' : 's'}</span>
+    <span class="spacer"></span>
+    <button class="fb-add-btn" id="fbAddBtn" title="Send anonymous feedback">${ic('plus')}</button>
+  </div>
+  <div class="growth-note">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+    <span>This feedback is only for growth and improvement. Please do not take it personally.</span>
+  </div>
+  ${body}`;
+}
+
+/* Feedback modal open/close */
+async function openFbModal(){
+  /* load employees list if not already cached */
+  if (!activeEmployees.length){
+    try {
+      const data = await apiRequest('/api/employees/active');
+      activeEmployees = Array.isArray(data.employees) ? data.employees : [];
+    } catch(err){ toast(err.message); return; }
+  }
+  const sel = $('#fb_to');
+  sel.innerHTML = '<option value="">— Select an employee —</option>'
+    + activeEmployees.map(e => '<option value="' + e.id + '">' + esc(e.name) + (e.title ? ' (' + esc(e.title) + ')' : '') + '</option>').join('');
+  $('#fb_strengths').value = '';
+  $('#fb_improvements').value = '';
+  $('#fb_suggestions').value = '';
+  ['#fb_to_err','#fb_str_err','#fb_imp_err','#fb_sug_err'].forEach(s => $(s).classList.remove('show'));
+  $('#fbOverlay').hidden = false;
+  setTimeout(() => $('#fb_to').focus(), 50);
+}
+function closeFbModal(){ $('#fbOverlay').hidden = true; }
+
+$('#fbSave').addEventListener('click', async () => {
+  const toId = $('#fb_to').value;
+  const strengths = $('#fb_strengths').value.trim();
+  const improvements = $('#fb_improvements').value.trim();
+  const suggestions = $('#fb_suggestions').value.trim();
+  let ok = true;
+  $('#fb_to_err').classList.toggle('show', !toId); if (!toId) ok = false;
+  $('#fb_str_err').classList.toggle('show', !strengths); if (!strengths) ok = false;
+  $('#fb_imp_err').classList.toggle('show', !improvements); if (!improvements) ok = false;
+  $('#fb_sug_err').classList.toggle('show', !suggestions); if (!suggestions) ok = false;
+  if (!ok) return;
+  const btn = $('#fbSave');
+  btn.disabled = true; btn.textContent = 'Submitting...';
+  try {
+    await apiRequest('/api/feedback', { method:'POST', body:{
+      to_user_id: Number(toId), strengths, improvements, suggestions
+    }});
+    closeFbModal();
+    toast('Anonymous feedback sent successfully');
+  } catch(err){ toast(err.message); }
+  finally { btn.disabled = false; btn.textContent = 'Submit Feedback'; }
+});
+$('#fbCancel').addEventListener('click', closeFbModal);
+$('#fbClose').addEventListener('click', closeFbModal);
+$('#fbClose').innerHTML = ic('x', 'width:17px;height:17px');
+$('#fbOverlay').addEventListener('click', e => { if (e.target === $('#fbOverlay')) closeFbModal(); });
+
 /* ---------- Wiring after each render ---------- */
 function afterRender(route){
   if (route === 'dashboard'){
@@ -2463,15 +2491,22 @@ function afterRender(route){
     $('#mCat').addEventListener('change', e => { manageCat = e.target.value; renderManageRows(); });
     $('#mStatus').addEventListener('change', e => { manageStatus = e.target.value; renderManageRows(); });
   }
-  if (route === 'anonymous_feedback'){
-    initAnonymousFeedback();
+  if (route === 'growth'){
+    const addBtn = $('#fbAddBtn');
+    if (addBtn) addBtn.addEventListener('click', () => openFbModal());
+    /* mark feedback as read */
+    const unread = feedback.filter(f => !f.is_read);
+    if (unread.length){
+      apiRequest('/api/feedback/read', { method:'PATCH' }).then(() => {
+        feedback.forEach(f => f.is_read = 1);
+        renderNotifications();
+      }).catch(() => {});
+    }
   }
 }
 
 /* Delegated clicks: navigation + link actions */
 document.addEventListener('click', e => {
-  const readFb = e.target.closest('[data-readfb]');
-  if (readFb){ handleMarkFeedbackRead(readFb.dataset.readfb); return; }
   const goEl = e.target.closest('[data-go]');
   if (goEl){ closeAllDropdowns(); go(goEl.dataset.go); return; }
   const addFor = e.target.closest('[data-addfor]');
@@ -2531,9 +2566,22 @@ document.addEventListener('click', e => {
     }
     return;
   }
+  const markRead = e.target.closest('[data-markread]');
+  if (markRead){
+    const id = markRead.dataset.markread;
+    apiRequest('/api/feedback/' + encodeURIComponent(id) + '/read', { method:'PATCH' })
+      .then(() => {
+        const item = feedback.find(x => x.id === id);
+        if (item) item.is_read = 1;
+        render();
+        toast('Feedback marked as read');
+      })
+      .catch(err => toast(err.message));
+    return;
+  }
 });
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape'){ closeEdit(); closeConfirm(); closeEventModal(); closeAnnModal(); setSidebar(false); closeAllDropdowns(); $('#searchResults').classList.remove('show'); }
+  if (e.key === 'Escape'){ closeEdit(); closeConfirm(); closeEventModal(); closeAnnModal(); closeFbModal(); setSidebar(false); closeAllDropdowns(); $('#searchResults').classList.remove('show'); }
 });
 
 /* ---------- Header: dropdowns, search, mobile menu ---------- */
@@ -2606,7 +2654,7 @@ document.querySelectorAll('[data-ic]').forEach(el => { el.innerHTML = ic(el.data
     await loadPortalData();
     if (isAuthed()) showApp(); else showLogin();
   } catch(e){
-    session = null; csrfToken = ''; links = []; events = []; announcements = []; receivedFeedback = [];
+    session = null; csrfToken = ''; links = []; events = []; announcements = [];
     showLogin();
   }
 })();
