@@ -1,0 +1,21 @@
+PassengerAppRoot /home/u847929344/domains/mypreneur.co.in/public_html/connect
+PassengerAppType node
+PassengerStartupFile server.js
+PassengerNodejs /opt/alt/alt-nodejs22/root/usr/bin/node
+PassengerEnvVar DB_HOST "194.163.35.120"
+PassengerEnvVar DB_PORT "3306"
+PassengerEnvVar DB_NAME "u847929344_myprcr"
+PassengerEnvVar DB_USER "u847929344_myprcu"
+PassengerEnvVar DB_PASSWORD "N8vQ2mL7xP!4tS3a"
+PassengerEnvVar DB_TIMEZONE "+05:30"
+PassengerEnvVar PORT "8000"
+PassengerEnvVar NODE_ENV "PROD"
+PassengerEnvVar SMTP_HOST "smtp.gmail.com"
+PassengerEnvVar SMTP_PORT "587"
+PassengerEnvVar SMTP_USER "info@mypreneur.in"
+PassengerEnvVar SMTP_PASS "bqhvznjxijvldtig"
+PassengerEnvVar SMTP_FROM ""Mypreneur CRM" <info@mypreneur.in>"
+PassengerEnvVar ALLOW_LEGACY_SHA256_PASSWORDS "true"
+PassengerEnvVar TRUST_PROXY "false"
+PassengerEnvVar DATA_DIR "./data"
+PassengerEnvVar SESSION_SECRET "mypreneur_connect_local_secret_32chars_long_key_1234"
