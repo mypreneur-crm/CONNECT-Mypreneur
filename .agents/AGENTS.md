@@ -125,3 +125,6 @@ If you have completed a set of changes and believe they are ready, say:
 
 Then wait for approval. Never assume "fix this bug" or "implement this feature" implies permission to commit the result.
 
+
+# Deployment Domain Rule
+When working on this project, it must ALWAYS deploy or run in the subdomain: connect.mypreneur.co.in
