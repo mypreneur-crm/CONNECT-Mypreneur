@@ -83,21 +83,25 @@ function decryptTextWithKey(key, ivHex, tagHex, encryptedHex) {
     let decrypted = decipher.update(encryptedHex, 'hex', 'utf8');
     decrypted += decipher.final('utf8');
     return decrypted;
-  } catch {
+  } catch (e) {
+    console.error('decrypt error:', e, 'key:', key.toString('hex'), 'iv:', ivHex);
     return null;
   }
 }
 
 function decryptText(encoded) {
   if (!encoded) return '';
-  const str = String(encoded);
+  const str = String(encoded).trim();
   if (!str.startsWith('enc:v1:')) return str;
   const parts = str.split(':');
   if (parts.length !== 5) return str;
-  const [, , ivHex, tagHex, encryptedHex] = parts;
+  const ivHex = parts[2].trim();
+  const tagHex = parts[3].trim();
+  const encryptedHex = parts[4].trim();
 
   const candidateSecrets = [
     MASTER_APP_SECRET,
+    process.env.MASTER_APP_SECRET,
     sessionSecret,
     process.env.ENCRYPTION_SECRET,
     process.env.SESSION_SECRET,
