@@ -53,8 +53,8 @@ function publicUser(row) {
   };
 }
 
-function getEncryptionKey() {
-  const secret = String(sessionSecret || process.env.SESSION_SECRET || 'mypreneur_connect_local_secret_32chars_long_key_1234');
+function getEncryptionKey(secretOverride) {
+  const secret = String(secretOverride || sessionSecret || process.env.ENCRYPTION_SECRET || process.env.SESSION_SECRET || 'mypreneur_connect_local_secret_32chars_long_key_1234');
   return crypto.createHash('sha256').update(secret).digest();
 }
 
@@ -69,15 +69,8 @@ function encryptText(text) {
   return `enc:v1:${iv.toString('hex')}:${authTag}:${encrypted}`;
 }
 
-function decryptText(encoded) {
-  if (!encoded) return '';
-  const str = String(encoded);
-  if (!str.startsWith('enc:v1:')) return str;
-  const parts = str.split(':');
-  if (parts.length !== 5) return str;
-  const [, , ivHex, tagHex, encryptedHex] = parts;
+function decryptTextWithKey(key, ivHex, tagHex, encryptedHex) {
   try {
-    const key = getEncryptionKey();
     const iv = Buffer.from(ivHex, 'hex');
     const authTag = Buffer.from(tagHex, 'hex');
     const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
@@ -86,8 +79,34 @@ function decryptText(encoded) {
     decrypted += decipher.final('utf8');
     return decrypted;
   } catch {
-    return '[Encrypted Message]';
+    return null;
   }
+}
+
+function decryptText(encoded) {
+  if (!encoded) return '';
+  const str = String(encoded);
+  if (!str.startsWith('enc:v1:')) return str;
+  const parts = str.split(':');
+  if (parts.length !== 5) return str;
+  const [, , ivHex, tagHex, encryptedHex] = parts;
+
+  const candidateSecrets = [
+    sessionSecret,
+    process.env.ENCRYPTION_SECRET,
+    process.env.SESSION_SECRET,
+    'mypreneur_connect_local_secret_32chars_long_key_1234'
+  ].filter(Boolean);
+
+  const uniqueSecrets = Array.from(new Set(candidateSecrets));
+
+  for (const secret of uniqueSecrets) {
+    const key = crypto.createHash('sha256').update(String(secret)).digest();
+    const result = decryptTextWithKey(key, ivHex, tagHex, encryptedHex);
+    if (result !== null) return result;
+  }
+
+  return '[Anonymous Feedback]';
 }
 
 function clientIp(req) {
