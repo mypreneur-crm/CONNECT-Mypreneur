@@ -1,0 +1,58 @@
+MYpreneur Connect - Final deployment package
+
+This package does NOT create users, roles, teams, login history, role mappings, or audit tables.
+It reads those from the senior developer's existing database.
+
+It creates only:
+  connect_links
+  connect_events
+  connect_announcements
+
+Required Hostinger settings:
+  Node.js: 22
+  Entry file: server.js
+  Build command: npm install
+  Start command: npm start
+
+Required environment variables:
+  DB_HOST
+  DB_PORT=3306
+  DB_NAME
+  DB_USER
+  DB_PASSWORD
+  DB_TABLE_PREFIX=connect_
+
+  AUTH_USERS_TABLE=users
+  AUTH_EMPLOYEES_TABLE=employees
+  AUTH_USER_ROLES_TABLE=user_roles
+  AUTH_ROLES_TABLE=roles
+  AUTH_TEAMS_TABLE=teams
+  AUTH_LOGIN_HISTORY_TABLE=login_history
+
+  PORTAL_ADMIN_ROLES=ADMIN
+  PORTAL_SALES_ADMIN_ROLES=sales.admin
+  PORTAL_OPERATIONS_ADMIN_ROLES=operation.admin,operations.admin
+  PORTAL_HR_ADMIN_ROLES=hr.admin
+  PORTAL_DIGITAL_ADMIN_ROLES=digital.admin
+
+  PORTAL_SALES_TEAMS=Sales
+  PORTAL_OPERATIONS_TEAMS=Operations
+  PORTAL_HR_TEAMS=HR
+  PORTAL_DIGITAL_TEAMS=Digital
+
+  ALLOW_LEGACY_SHA256_PASSWORDS=true
+  NODE_ENV=production
+  HOST=0.0.0.0
+  TRUST_PROXY=true
+  DATA_DIR=/home/ACCOUNT_USER/mypreneur-connect-data
+  SESSION_SECRET=<random value of at least 32 characters>
+
+Access logic:
+  ADMIN role -> full access
+  sales.admin -> manage Sales Hub
+  operation.admin or operations.admin -> manage Operations Hub
+  hr.admin -> manage Policies and HR Hub
+  digital.admin -> manage Digital Hub
+  all other active users -> view-only access according to their team assignment
+
+Normal users with teams outside Sales, Operations, HR, or Digital cannot enter a Team Hub until a matching portal hub is added.

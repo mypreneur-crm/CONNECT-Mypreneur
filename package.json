@@ -1,0 +1,22 @@
+{
+  "name": "mypreneur-connect-deploy",
+  "version": "5.0.0",
+  "private": true,
+  "description": "Mypreneur Connect using existing database users, roles, teams, and login history",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "start:env": "node --env-file=.env server.js",
+    "check-db": "node --env-file=.env scripts/check-database.js",
+    "test-login": "node --env-file=.env scripts/test-login.js",
+    "add-user": "node --env-file=.env scripts/add-user.js",
+    "test": "node tests/unit-test.js"
+  },
+  "dependencies": {
+    "bcryptjs": "3.0.2",
+    "mysql2": "3.23.1"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}
