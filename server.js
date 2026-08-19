@@ -1,4 +1,7 @@
 'use strict';
+if (require('node:fs').existsSync('.env') && !process.env.DB_HOST) {
+  try { require('node:process').loadEnvFile('.env'); } catch (e) {}
+}
 
 const http = require('node:http');
 const fs = require('node:fs');
