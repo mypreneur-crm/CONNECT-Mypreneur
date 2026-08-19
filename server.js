@@ -53,8 +53,10 @@ function publicUser(row) {
   };
 }
 
+const MASTER_APP_SECRET = 'mypreneur_connect_master_app_secret_v1_2026_x89a';
+
 function getEncryptionKey(secretOverride) {
-  const secret = String(secretOverride || sessionSecret || process.env.ENCRYPTION_SECRET || process.env.SESSION_SECRET || 'mypreneur_connect_local_secret_32chars_long_key_1234');
+  const secret = String(secretOverride || MASTER_APP_SECRET);
   return crypto.createHash('sha256').update(secret).digest();
 }
 
@@ -92,6 +94,7 @@ function decryptText(encoded) {
   const [, , ivHex, tagHex, encryptedHex] = parts;
 
   const candidateSecrets = [
+    MASTER_APP_SECRET,
     sessionSecret,
     process.env.ENCRYPTION_SECRET,
     process.env.SESSION_SECRET,
@@ -507,7 +510,7 @@ function serializeEoqApplication(row) {
   }
   return {
     id: row.id,
-    app_code: row.app_code || `EQO-${row.year}-${row.quarter}-001`,
+    app_code: row.app_code || `EOQ-${row.year}-${row.quarter}-001`,
     year: Number(row.year),
     quarter: row.quarter,
     nomination_type: row.role === 'Manager' ? 'Manager' : 'Self',
@@ -546,7 +549,7 @@ function serializeEoqApplication(row) {
 }
 
 async function generateNextEoqAppCode(db, year, quarter) {
-  const prefix = `EQO-${year}-${quarter}-`;
+  const prefix = `EOQ-${year}-${quarter}-`;
   const row = await db.get(
     `SELECT app_code FROM eoq_nominations WHERE year=? AND quarter=? AND app_code LIKE ? ORDER BY app_code DESC LIMIT 1`,
     [year, quarter, `${prefix}%`]
@@ -621,7 +624,7 @@ async function getEmployeeProfile(db, userId) {
 }
 
 async function generateNextEoqAppCode(db, year, quarter) {
-  const prefix = `EQO-${year}-${quarter}-`;
+  const prefix = `EOQ-${year}-${quarter}-`;
   const row = await db.get(
     `SELECT app_code FROM eoq_nominations WHERE year=? AND quarter=? AND app_code LIKE ? ORDER BY created_at DESC, app_code DESC LIMIT 1`,
     [year, quarter, `${prefix}%`]
