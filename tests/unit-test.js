@@ -24,7 +24,8 @@ const env = {
 const config = accessConfig(env);
 
 assert.deepEqual(resolvePortalAccess(['service.admin'], null, config), { role: 'admin', team: null });
-assert.deepEqual(resolvePortalAccess(['ADMIN'], 'Sales', config), { role: 'member', team: 'Sales Team' });
+assert.equal(resolvePortalAccess(['super.admin'], null, config), null);
+assert.equal(resolvePortalAccess(['ADMIN'], null, config), null);
 assert.deepEqual(resolvePortalAccess(['EMPLOYEE'], 'Sales', config), { role: 'member', team: 'Sales Team' });
 assert.deepEqual(resolvePortalAccess(['EMPLOYEE'], 'Operations', config), { role: 'member', team: 'Operations Team' });
 assert.deepEqual(resolvePortalAccess(['EMPLOYEE'], 'HR', config), { role: 'member', team: 'HR Team' });
