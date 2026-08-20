@@ -1823,7 +1823,7 @@ function viewDashboard(){
   ].filter(t => canSeeCategory(t[0]));
   const solo = myHubs.length === 1;
 
-  const latestAnn = sortedAnnouncements().slice(0, 3);
+  const latestAnn = sortedAnnouncements().slice(0, 1);
   const annHtml = latestAnn.length
     ? latestAnn.map(a => announcementRow(a, false)).join('')
     : `<div class="empty" style="padding:28px 16px;border:none">
@@ -1957,15 +1957,39 @@ function pastEvents(){
   const t = todayKey();
   return events.filter(ev => ev.date < t).sort((a,b) => b.date.localeCompare(a.date));
 }
+function getEventCountdownBadge(eventDateStr) {
+  const todayStr = todayKey();
+  const evDate = new Date(eventDateStr + 'T00:00:00');
+  const todayDate = new Date(todayStr + 'T00:00:00');
+  const diffTime = evDate.getTime() - todayDate.getTime();
+  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 0) {
+    return `<span class="badge" style="background:#DCFCE7;color:#15803D;font-weight:700;font-size:12px;padding:3px 10px;border-radius:9999px;display:inline-flex;align-items:center;gap:4px;border:1px solid #86EFAC">🔴 Happening Today!</span>`;
+  } else if (diffDays === 1) {
+    return `<span class="badge" style="background:#FEF3C7;color:#B45309;font-weight:700;font-size:12px;padding:3px 10px;border-radius:9999px;display:inline-flex;align-items:center;gap:4px;border:1px solid #FDE68A">⏰ 1 Day Remaining (Tomorrow)</span>`;
+  } else if (diffDays > 1) {
+    return `<span class="badge" style="background:#FFF7ED;color:#C2410C;font-weight:700;font-size:12px;padding:3px 10px;border-radius:9999px;display:inline-flex;align-items:center;gap:4px;border:1px solid #FFEDD5">⏳ ${diffDays} Days Remaining</span>`;
+  } else {
+    const ago = Math.abs(diffDays);
+    return `<span class="badge" style="background:#F1F5F9;color:#64748B;font-weight:600;font-size:12px;padding:3px 10px;border-radius:9999px;display:inline-flex;align-items:center;gap:4px">Completed (${ago} day${ago === 1 ? '' : 's'} ago)</span>`;
+  }
+}
+
 function eventRow(ev, withActions){
   const d = new Date(ev.date + 'T00:00:00');
   const bits = [];
   if (ev.time) bits.push(ic('clock') + esc(ev.time));
   bits.push((ev.type === 'Online' ? ic('video') : ic('pin')) + esc(ev.location || ev.type));
+  const countdownBadge = getEventCountdownBadge(ev.date);
+
   return `<div class="event">
     <div class="edate"><small>${MON3[d.getMonth()]}</small><b>${d.getDate()}</b><span>${d.getFullYear()}</span></div>
     <div class="event-info">
-      <b>${esc(ev.title)}</b>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:2px">
+        <b>${esc(ev.title)}</b>
+        ${countdownBadge}
+      </div>
       <small>${bits.join(' &nbsp;&middot;&nbsp; ')}</small>
       ${ev.notes ? '<small style="margin-top:2px">' + esc(ev.notes) + '</small>' : ''}
     </div>
