@@ -1860,7 +1860,11 @@ function viewDashboard(){
   <div class="section">
     <div class="section-head"><h2 class="section-title">${myHubs.length === 1 ? 'My Team Hub' : 'Team Hubs'}</h2></div>
     <div class="grid-4${solo ? ' solo' : ''}">
-      ${myHubs.map(t => teamCard(t[0], t[1], t[2], solo)).join('')}
+      ${myHubs.length ? myHubs.map(t => teamCard(t[0], t[1], t[2], solo)).join('') : `
+        <div class="empty" style="grid-column: 1 / -1; padding: 24px; text-align: center; border: 1px dashed var(--border,#ccc); border-radius: 12px; background: var(--surface,#fff);">
+          <p style="margin: 0; color: var(--muted,#666);">No specific Team Hub assigned to <b>${esc(session.team || 'your team')}</b> yet.</p>
+        </div>
+      `}
     </div>
   </div>
 

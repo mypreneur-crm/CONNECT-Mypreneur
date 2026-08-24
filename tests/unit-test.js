@@ -10,11 +10,11 @@ const { resolvePortalAccess, accessConfig, mapSourceTeam, hashScryptPassword, ve
 const { LocalFileStore } = require('../lib/file-store');
 
 const env = {
-  PORTAL_ADMIN_ROLES: 'service.admin,service_admin,service admin',
-  PORTAL_SALES_ADMIN_ROLES: 'sales.admin',
-  PORTAL_OPERATIONS_ADMIN_ROLES: 'operation.admin,operations.admin',
-  PORTAL_HR_ADMIN_ROLES: 'hr.admin',
-  PORTAL_DIGITAL_ADMIN_ROLES: 'digital.admin',
+  PORTAL_ADMIN_ROLES: 'ADMIN,SERVICE ADMIN',
+  PORTAL_SALES_ADMIN_ROLES: 'SALES ADMIN',
+  PORTAL_OPERATIONS_ADMIN_ROLES: 'OPERATION ADMIN',
+  PORTAL_HR_ADMIN_ROLES: 'HR ADMIN',
+  PORTAL_DIGITAL_ADMIN_ROLES: 'DIGITAL ADMIN',
   PORTAL_SALES_TEAMS: 'Sales',
   PORTAL_OPERATIONS_TEAMS: 'Operations',
   PORTAL_HR_TEAMS: 'HR',
@@ -23,9 +23,9 @@ const env = {
 };
 const config = accessConfig(env);
 
-assert.deepEqual(resolvePortalAccess(['service.admin'], null, config), { role: 'admin', team: null });
+assert.deepEqual(resolvePortalAccess(['SERVICE ADMIN'], null, config), { role: 'admin', team: null });
+assert.deepEqual(resolvePortalAccess(['ADMIN'], null, config), { role: 'admin', team: null });
 assert.equal(resolvePortalAccess(['super.admin'], null, config), null);
-assert.equal(resolvePortalAccess(['ADMIN'], null, config), null);
 assert.deepEqual(resolvePortalAccess(['EMPLOYEE'], 'Sales', config), { role: 'member', team: 'Sales Team' });
 assert.deepEqual(resolvePortalAccess(['EMPLOYEE'], 'Operations', config), { role: 'member', team: 'Operations Team' });
 assert.deepEqual(resolvePortalAccess(['EMPLOYEE'], 'HR', config), { role: 'member', team: 'HR Team' });
