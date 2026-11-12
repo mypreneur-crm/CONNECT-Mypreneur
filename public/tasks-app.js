@@ -966,7 +966,11 @@
       }).join('');
     } catch (e) {
       console.error('Error loading team capacity:', e);
-      if (container) container.innerHTML = `<div style="color:#EF4444;grid-column:1/-1;">Failed to load team capacity.</div>`;
+      if (container) {
+        container.innerHTML = `<div style="padding:30px;color:var(--danger);text-align:center;grid-column:1/-1;">
+          Failed to load team capacity: ${escHtml(e.message || 'Server error')}
+        </div>`;
+      }
     }
   }
 
