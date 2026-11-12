@@ -89,7 +89,7 @@
   color: var(--cyan-dark);
 }
 
-/* 9-Hour Capacity Widget */
+/* 8-Hour Capacity Widget (60% Daily Workload / 40% Other Tasks) */
 .capacity-card {
   background: linear-gradient(135deg, #0F0147 0%, #1A0D54 100%);
   color: #FFFFFF;

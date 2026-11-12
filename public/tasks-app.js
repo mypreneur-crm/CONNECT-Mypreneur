@@ -1,7 +1,7 @@
 // ==========================================================================
 // Mypreneur Task Manager - Frontend Application
 // Connects with CONNECT backend API (/api/tasks/*)
-// Features: 9-hour capacity engine, smart duplicate search, approval gates,
+// Features: 8-hour capacity engine (60% daily workload / 40% other tasks), smart duplicate search, approval gates,
 //           CRM regular workload, live timers, and event workspaces.
 // ==========================================================================
 
@@ -117,7 +117,7 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:24px;height:24px;color:var(--cyan);"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>
             Task Manager
           </h2>
-          <p>${admin ? 'Multi-Resource Capacity Engine, Workload Planner & Approvals' : 'My Daily Task Plan & 9-Hour Capacity Tracker'}</p>
+          <p>${admin ? 'Multi-Resource Capacity Engine, Workload Planner & Approvals' : 'My Daily Task Plan & 8-Hour Capacity Tracker'}</p>
         </div>
         <div class="tm-actions">
           <button class="btn btn-secondary" onclick="tmReloadData()" title="Refresh Tasks">
@@ -271,20 +271,25 @@
     const viewedMember = isViewingStaff ? tm.teamMembers.find(m => String(m.employee_id) === String(tm.adminSelectedEmployeeId)) : null;
 
     const cap = (isViewingStaff ? tm.adminSelectedEmployeeCapacity : tm.capacity) || {
-      effectiveCapacity: 540,
+      effectiveCapacity: 480,
+      dailyWorkloadTargetMinutes: 288,
+      taskAssignmentsTargetMinutes: 192,
       totalPlannedMinutes: 0,
       crmMinutes: 0,
       taskAllocMinutes: 0,
       actualMinutesWorked: 0,
       plannedAllocationPct: 0,
-      remainingAssignableMinutes: 540,
+      dailyWorkloadPct: 0,
+      taskAssignmentsPct: 0,
+      remainingAssignableMinutes: 480,
+      remainingTaskQuotaMinutes: 192,
       isOverAllocated: false
     };
 
     const crm = (isViewingStaff ? tm.adminSelectedEmployeeCrm : tm.crmWorkload) || { items: [], totalEstimatedMinutes: 0, actualLoggedMinutes: 0, teamName: '' };
 
-    // Calculate percentage segments for 540-minute bar
-    const totalCap = cap.effectiveCapacity || 540;
+    // Calculate percentage segments for 480-minute bar (8h actual working)
+    const totalCap = cap.effectiveCapacity || 480;
     const crmPct = Math.min(100, Math.round((cap.crmMinutes / totalCap) * 100));
     const tasksPct = Math.min(100 - crmPct, Math.round((cap.taskAllocMinutes / totalCap) * 100));
     const actualPct = Math.min(100, Math.round((cap.actualMinutesWorked / totalCap) * 100));
@@ -333,35 +338,41 @@
       </div>
       ` : ''}
 
-      <!-- 9-Hour Capacity Card -->
+      <!-- 8-Hour Capacity Card -->
       <div class="capacity-card">
         <div class="capacity-head">
           <div class="capacity-title">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px;height:20px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            ${viewedMember ? escHtml(viewedMember.name) + "'s" : "Today's"} 9-Hour Capacity &amp; Utilization
+            ${viewedMember ? escHtml(viewedMember.name) + "'s" : "Today's"} 8-Hour Capacity &amp; Utilization
           </div>
           <span class="capacity-badge ${cap.isOverAllocated ? 'over-allocated' : ''}">
-            ${cap.isOverAllocated ? '⚠️ Over-Allocated (' + cap.plannedAllocationPct + '%)' : cap.plannedAllocationPct + '% Planned (' + formatMins(cap.totalPlannedMinutes) + ' / 9h)'}
+            ${cap.isOverAllocated ? '⚠️ Over-Allocated (' + cap.plannedAllocationPct + '%)' : cap.plannedAllocationPct + '% Planned (' + formatMins(cap.totalPlannedMinutes) + ' / 8h)'}
           </span>
         </div>
 
-        <div class="capacity-bar-wrap">
-          <div class="cap-seg-crm" style="width:${crmPct}%;" title="CRM Regular Workload: ${formatMins(cap.crmMinutes)}"></div>
-          <div class="cap-seg-tasks" style="width:${tasksPct}%;" title="Assigned Tasks: ${formatMins(cap.taskAllocMinutes)}"></div>
+        <div style="font-size:12px;color:rgba(255,255,255,0.85);margin-top:-6px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+          <span>🕒 <strong>8 Working Hours</strong> (Lunch &amp; 1h break excluded)</span>
+          <span>🎯 Budget: <strong style="color:#7DD3FC;">60% Daily Workload</strong> (4h 48m) · <strong style="color:#C7D2FE;">40% Other Tasks</strong> (3h 12m)</span>
+        </div>
+
+        <div class="capacity-bar-wrap" style="position:relative;">
+          <div class="cap-seg-crm" style="width:${crmPct}%;" title="Daily Workload (CRM): ${formatMins(cap.crmMinutes)} (Target 60%: 4h 48m)"></div>
+          <div class="cap-seg-tasks" style="width:${tasksPct}%;" title="Other Tasks: ${formatMins(cap.taskAllocMinutes)} (Target 40%: 3h 12m)"></div>
+          <div style="position:absolute;left:60%;top:0;bottom:0;width:2px;background:rgba(255,255,255,0.65);z-index:2;" title="60% Daily Workload Guideline (4h 48m)"></div>
         </div>
 
         <div class="capacity-stats-grid">
           <div class="cap-stat-item">
-            <span class="cap-stat-label">Total Daily Baseline</span>
-            <span class="cap-stat-value">9h 00m</span>
+            <span class="cap-stat-label">Daily Baseline</span>
+            <span class="cap-stat-value">8h 00m</span>
           </div>
           <div class="cap-stat-item">
-            <span class="cap-stat-label">CRM Workload</span>
-            <span class="cap-stat-value" style="color:var(--cyan);">${formatMins(cap.crmMinutes)}</span>
+            <span class="cap-stat-label">Daily Workload (60%)</span>
+            <span class="cap-stat-value" style="color:var(--cyan);">${formatMins(cap.crmMinutes)} <span style="font-size:11px;opacity:0.8;">/ 4h 48m</span></span>
           </div>
           <div class="cap-stat-item">
-            <span class="cap-stat-label">Assigned Tasks</span>
-            <span class="cap-stat-value" style="color:#A5B4FC;">${formatMins(cap.taskAllocMinutes)}</span>
+            <span class="cap-stat-label">Other Tasks (40%)</span>
+            <span class="cap-stat-value" style="color:#A5B4FC;">${formatMins(cap.taskAllocMinutes)} <span style="font-size:11px;opacity:0.8;">/ 3h 12m</span></span>
           </div>
           <div class="cap-stat-item">
             <span class="cap-stat-label">Actual Logged</span>
@@ -687,12 +698,12 @@
       return `
       <div style="background:#FFF;border:1.5px solid #BAE6FD;border-radius:14px;padding:16px 20px;display:flex;align-items:center;gap:12px;color:var(--muted);">
         <span class="timer-pulse-dot"></span>
-        <span style="font-size:13.5px;font-weight:600;">Loading 9-hour daily workload and free hours for <strong>${escHtml(member.name)}</strong>...</span>
+        <span style="font-size:13.5px;font-weight:600;">Loading 8-hour daily workload and free hours for <strong>${escHtml(member.name)}</strong>...</span>
       </div>
       `;
     }
 
-    const totalCap = cap.effectiveCapacity || 540;
+    const totalCap = cap.effectiveCapacity || 480;
     const crmMins = cap.crmMinutes || 0;
     const taskMins = cap.taskAllocMinutes || 0;
     const actualMins = cap.actualMinutesWorked || 0;
@@ -725,7 +736,7 @@
               </span>
             </div>
             <div style="font-size:12.5px;color:var(--muted);margin-top:2px;">
-              ${escHtml(member.department || 'Staff')} · ${escHtml(member.designation || 'Team Member')} · Standard Shift: 9.0 Hours (540 mins)
+              ${escHtml(member.department || 'Staff')} · ${escHtml(member.designation || 'Team Member')} · Standard Shift: 8.0 Hours (480 mins) · Excl. 1h Lunch/Break
             </div>
           </div>
         </div>
@@ -747,40 +758,41 @@
         </div>
       </div>
 
-      <!-- 9-Hour Capacity Visual Bar -->
+      <!-- 8-Hour Capacity Visual Bar with 60% Marker -->
       <div>
-        <div style="background:#E2E8F0;border-radius:7px;height:12px;overflow:hidden;display:flex;margin-bottom:6px;">
-          <div style="background:#0284C7;width:${crmPct}%;" title="CRM Regular Workload: ${formatMins(crmMins)}"></div>
-          <div style="background:#818CF8;width:${taskPct}%;" title="Assigned Tasks: ${formatMins(taskMins)}"></div>
+        <div style="position:relative;background:#E2E8F0;border-radius:7px;height:12px;overflow:hidden;display:flex;margin-bottom:6px;">
+          <div style="background:#0284C7;width:${crmPct}%;" title="Daily Workload (CRM): ${formatMins(crmMins)} (Target 60%: 4h 48m)"></div>
+          <div style="background:#818CF8;width:${taskPct}%;" title="Other Tasks: ${formatMins(taskMins)} (Target 40%: 3h 12m)"></div>
           <div style="background:#10B981;width:${actualPct}%;" title="Actual Worked: ${formatMins(actualMins)}"></div>
           <div style="background:#F1F5F9;width:${freePct}%;" title="Remaining Free: ${formatMins(freeMins)}"></div>
+          <div style="position:absolute;left:60%;top:0;bottom:0;width:2px;background:#0F172A;opacity:0.35;" title="60% Daily Workload Target (4h 48m)"></div>
         </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;font-size:11.5px;color:var(--muted);">
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:11.5px;color:var(--muted);flex-wrap:wrap;gap:6px;">
           <span>0h</span>
-          <span style="color:#0284C7;font-weight:600;">■ CRM: ${formatMins(crmMins)}</span>
-          <span style="color:#6366F1;font-weight:600;">■ Tasks: ${formatMins(taskMins)}</span>
+          <span style="color:#0284C7;font-weight:600;">■ Daily Workload (60%): ${formatMins(crmMins)} / 4h 48m</span>
+          <span style="color:#6366F1;font-weight:600;">■ Other Tasks (40%): ${formatMins(taskMins)} / 3h 12m</span>
           <span style="color:#059669;font-weight:600;">■ Worked: ${formatMins(actualMins)}</span>
           <span style="color:${freeMins > 0 ? '#059669' : '#DC2626'};font-weight:700;">■ Free: ${formatMins(freeMins)}</span>
-          <span>9h (540m)</span>
+          <span>8h (480m)</span>
         </div>
       </div>
 
       <!-- Quick Metrics Summary -->
       <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));gap:10px;font-size:12px;">
         <div style="background:#F8FAFC;padding:10px 14px;border-radius:10px;border:1px solid #E2E8F0;">
-          <span style="color:var(--muted);display:block;font-size:11px;">CRM Daily Workload</span>
-          <strong style="color:#0284C7;font-size:14px;">${formatMins(crmMins)}</strong>
+          <span style="color:var(--muted);display:block;font-size:11px;">Daily Workload (60% Budget)</span>
+          <strong style="color:#0284C7;font-size:14px;">${formatMins(crmMins)} <span style="font-size:11px;color:var(--muted);font-weight:normal;">/ 4h 48m</span></strong>
           <span style="color:var(--muted);font-size:11px;display:block;">${crmCount} active CRM items</span>
         </div>
         <div style="background:#F8FAFC;padding:10px 14px;border-radius:10px;border:1px solid #E2E8F0;">
-          <span style="color:var(--muted);display:block;font-size:11px;">Assigned Tasks</span>
-          <strong style="color:#6366F1;font-size:14px;">${formatMins(taskMins)}</strong>
+          <span style="color:var(--muted);display:block;font-size:11px;">Other Tasks (40% Budget)</span>
+          <strong style="color:#6366F1;font-size:14px;">${formatMins(taskMins)} <span style="font-size:11px;color:var(--muted);font-weight:normal;">/ 3h 12m</span></strong>
           <span style="color:var(--muted);font-size:11px;display:block;">${empTasks.length} tasks allocated</span>
         </div>
         <div style="background:#F8FAFC;padding:10px 14px;border-radius:10px;border:1px solid #E2E8F0;">
           <span style="color:var(--muted);display:block;font-size:11px;">Total Planned Load</span>
           <strong style="color:var(--navy);font-size:14px;">${formatMins(cap.totalPlannedMinutes)}</strong>
-          <span style="color:var(--muted);font-size:11px;display:block;">${allocPct}% of 9.0h baseline</span>
+          <span style="color:var(--muted);font-size:11px;display:block;">${allocPct}% of 8.0h baseline</span>
         </div>
         <div style="background:#F8FAFC;padding:10px 14px;border-radius:10px;border:1px solid #E2E8F0;">
           <span style="color:var(--muted);display:block;font-size:11px;">Actual Logged Time</span>
@@ -793,6 +805,7 @@
           <span style="color:${freeMins > 0 ? '#065F46' : '#991B1B'};font-size:11px;display:block;">Available to allocate</span>
         </div>
       </div>
+    </div>
     </div>
     `;
   }
@@ -878,7 +891,7 @@
   };
 
   // =========================================================================
-  // Tab 3: Team Workload Planner (540-minute Capacity)
+  // Tab 3: Team Workload Planner (480-minute Capacity: 60% Daily / 40% Tasks)
   // =========================================================================
   function renderTeamCapacityTab() {
     if (!isTaskAdmin()) {
@@ -896,9 +909,9 @@
     <div style="display:flex;flex-direction:column;gap:18px;">
       <div style="background:#FFF;padding:18px 24px;border-radius:14px;border:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
         <div>
-          <h3 style="font-size:16px;font-weight:700;color:var(--navy);">Team 9-Hour Capacity &amp; Availability Matrix</h3>
+          <h3 style="font-size:16px;font-weight:700;color:var(--navy);">Team 8-Hour Capacity &amp; Availability Matrix</h3>
           <p style="font-size:13px;color:var(--muted);margin:2px 0 0 0;">
-            Check employee workload and availability before assigning new tasks. Standard 540 minutes / 9 hours per day.
+            Check employee workload before assigning tasks. Standard 480 mins (8 working hours) — 60% Daily Workload (4h 48m) · 40% Other Task Assignments (3h 12m). Lunch &amp; break (1h) excluded.
           </p>
         </div>
         <div>
@@ -927,8 +940,8 @@
       }
 
       container.innerHTML = tm.teamCapacity.map(m => {
-        const c = m.capacity || { effectiveCapacity: 540, plannedAllocationPct: 0, crmMinutes: 0, taskAllocMinutes: 0, remainingAssignableMinutes: 540, isOverAllocated: false };
-        const total = c.effectiveCapacity || 540;
+        const c = m.capacity || { effectiveCapacity: 480, dailyWorkloadTargetMinutes: 288, taskAssignmentsTargetMinutes: 192, plannedAllocationPct: 0, crmMinutes: 0, taskAllocMinutes: 0, remainingAssignableMinutes: 480, isOverAllocated: false };
+        const total = c.effectiveCapacity || 480;
         const crmPct = Math.min(100, Math.round((c.crmMinutes / total) * 100));
         const taskPct = Math.min(100 - crmPct, Math.round((c.taskAllocMinutes / total) * 100));
 
@@ -944,15 +957,16 @@
             </span>
           </div>
 
-          <!-- Capacity Bar -->
-          <div style="background:#E2E8F0;border-radius:6px;height:10px;overflow:hidden;display:flex;">
-            <div style="background:var(--cyan);width:${crmPct}%;" title="CRM: ${formatMins(c.crmMinutes)}"></div>
-            <div style="background:#818CF8;width:${taskPct}%;" title="Tasks: ${formatMins(c.taskAllocMinutes)}"></div>
+          <!-- Capacity Bar with 60% Guideline Marker -->
+          <div style="position:relative;background:#E2E8F0;border-radius:6px;height:10px;overflow:hidden;display:flex;">
+            <div style="background:var(--cyan);width:${crmPct}%;" title="Daily Workload (CRM): ${formatMins(c.crmMinutes)} (Target 60%: 4h 48m)"></div>
+            <div style="background:#818CF8;width:${taskPct}%;" title="Other Tasks: ${formatMins(c.taskAllocMinutes)} (Target 40%: 3h 12m)"></div>
+            <div style="position:absolute;left:60%;top:0;bottom:0;width:2px;background:#0F172A;opacity:0.25;" title="60% Daily Workload Budget Mark"></div>
           </div>
 
           <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted);border-top:1px solid #F1F5F9;padding-top:8px;">
-            <span>CRM: <strong>${formatMins(c.crmMinutes)}</strong></span>
-            <span>Tasks: <strong>${formatMins(c.taskAllocMinutes)}</strong></span>
+            <span>CRM (60%): <strong>${formatMins(c.crmMinutes)}</strong></span>
+            <span>Tasks (40%): <strong>${formatMins(c.taskAllocMinutes)}</strong></span>
             <span style="color:${c.remainingAssignableMinutes > 0 ? '#10B981' : '#EF4444'};font-weight:700;">
               Free: ${formatMins(c.remainingAssignableMinutes)}
             </span>
