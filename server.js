@@ -13,6 +13,7 @@ const { MySQLDatabase, databaseConfig } = require('./lib/database');
 const { LocalFileStore } = require('./lib/file-store');
 const { initializeSchema } = require('./lib/schema');
 const { DatabaseAuthProvider, hashScryptPassword } = require('./lib/auth-provider');
+const { handleTaskApi } = require('./lib/tasks/task-routes');
 
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -47,12 +48,15 @@ function tokenHash(token) { return crypto.createHash('sha256').update(token).dig
 function publicUser(row) {
   return {
     id: row.id,
+    employeeId: row.employeeId || row.id,
     user: row.username,
     username: row.username,
     name: row.name,
     title: row.title,
     role: row.role,
-    team: row.team || null
+    team: row.team || null,
+    sourceRoles: row.sourceRoles || [],
+    sourceTeam: row.sourceTeam || null
   };
 }
 
@@ -809,6 +813,12 @@ async function handleApi(req, res, url) {
     const auth = await requireAuth(req, res);
     if (!auth) return;
     return sendJson(res, 200, { user: auth.user, csrfToken: auth.csrf });
+  }
+
+  if (pathname.startsWith('/api/tasks')) {
+    const auth = await requireAuth(req, res);
+    if (!auth) return;
+    return await handleTaskApi(req, res, url, auth, db);
   }
 
   if (method === 'POST' && pathname === '/api/links') {
@@ -1701,7 +1711,7 @@ async function serveStatic(req, res, url) {
   res.writeHead(200, {
     'Content-Type': staticMime(file),
     'Content-Length': stat.size,
-    'Cache-Control': file.endsWith('.html') ? 'no-cache' : 'public, max-age=3600'
+    'Cache-Control': (file.endsWith('.html') || file.endsWith('.js') || file.endsWith('.css')) ? 'no-cache, must-revalidate' : 'public, max-age=3600'
   });
   if (req.method === 'HEAD') return res.end();
   const stream = fs.createReadStream(file);

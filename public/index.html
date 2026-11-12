@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/tasks-style.css?v=20261112_02">
 <style>
 :root{
   --navy:#0F0147;
@@ -1348,6 +1349,7 @@ td .t-url{
 
 <div id="toast" class="toast" role="status"></div>
 
+<script src="/tasks-app.js?v=20261112_04"></script>
 <script>
 /* =====================================================================
    MYPRENEUR CONNECT — CONFIGURATION
@@ -1372,6 +1374,7 @@ const CATEGORIES = ["Policies","Sales Team","Operations Team","HR Team","Digital
       { ..., category: "Name" }      -> shows links saved under that category */
 const MENU = [
   { id:"dashboard",        label:"Dashboard",        icon:"grid" },
+  { id:"tasks",            label:"Task Manager",     icon:"clipboard" },
   { id:"leave",            label:"Apply Leave",      icon:"umbrella", external: LEAVE_FORM_URL },
   { id:"employee_contact", label:"Employee Contact", icon:"users",    external: EMPLOYEE_CONTACT_URL },
   { id:"eoq",              label:"Employee of the Quarter", icon:"trophy" },
@@ -1553,7 +1556,7 @@ const canUseLinkTools    = () => editableCategories().length > 0;
 /* Can this user open this route at all? */
 function canSeeRoute(r){
   if (!session) return false;
-  if (r === "dashboard" || r === "events" || r === "announcements" || r === "growth" || r === "eoq") return true;
+  if (r === "dashboard" || r === "tasks" || r === "events" || r === "announcements" || r === "growth" || r === "eoq") return true;
   if (ROUTE_CATEGORY[r]) return canSeeCategory(ROUTE_CATEGORY[r]);
   if (r === "manage") return isAdmin();          // Manage All Links: admin only
   if (r === "add") return canUseLinkTools();
@@ -1767,13 +1770,16 @@ function render(){
      sent back to the dashboard. location.replace() is used instead of setting
      location.hash so the blocked address does NOT become a history entry —
      otherwise the browser Back button gets stuck bouncing on the dashboard. */
-  const known = ['dashboard','events','announcements','manage','add','growth','eoq'].includes(route) || !!ROUTE_CATEGORY[route];
+  const known = ['dashboard','tasks','events','announcements','manage','add','growth','eoq'].includes(route) || !!ROUTE_CATEGORY[route];
   if (route !== 'dashboard' && (!known || !canSeeRoute(route))){
     toast(known ? 'You do not have access to that section' : 'That page does not exist');
     goReplace('dashboard');
     return;
   }
   if (route === 'dashboard') view.innerHTML = viewDashboard();
+  else if (route === 'tasks') {
+    view.innerHTML = typeof viewTasks === 'function' ? viewTasks() : '<div style="padding:40px;text-align:center;color:var(--muted);">Loading Task Manager...</div>';
+  }
   else if (route === 'add') view.innerHTML = viewAdd();
   else if (route === 'manage') view.innerHTML = viewManage();
   else if (route === 'events') view.innerHTML = viewEvents();
@@ -1790,6 +1796,7 @@ function render(){
   renderNotifications();
   afterRender(route);
   const label = route === 'dashboard' ? 'Dashboard'
+    : route === 'tasks' ? 'Task Manager'
     : route === 'add' ? 'Add Link'
     : route === 'manage' ? 'Manage All Links'
     : route === 'events' ? 'Events'
@@ -2819,6 +2826,18 @@ $('#fbOverlay').addEventListener('click', e => { if (e.target === $('#fbOverlay'
 
 /* ---------- Wiring after each render ---------- */
 function afterRender(route){
+  if (route === 'tasks'){
+    if (typeof initTasksView === 'function') {
+      initTasksView();
+    } else {
+      setTimeout(() => {
+        if (typeof viewTasks === 'function' && $('#view').innerHTML.includes('Loading Task Manager')) {
+          $('#view').innerHTML = viewTasks();
+        }
+        if (typeof initTasksView === 'function') initTasksView();
+      }, 150);
+    }
+  }
   if (route === 'dashboard'){
     $('#calPrev').addEventListener('click', () => { calM--; if (calM < 0){ calM = 11; calY--; } renderCalendar(); });
     $('#calNext').addEventListener('click', () => { calM++; if (calM > 11){ calM = 0; calY++; } renderCalendar(); });
