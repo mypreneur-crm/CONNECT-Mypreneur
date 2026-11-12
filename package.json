@@ -10,6 +10,7 @@
     "check-db": "node --env-file=.env scripts/check-database.js",
     "test-login": "node --env-file=.env scripts/test-login.js",
     "add-user": "node --env-file=.env scripts/add-user.js",
+    "sync-roles": "node --env-file=.env scripts/sync-roles.js",
     "test": "node tests/unit-test.js"
   },
   "dependencies": {
