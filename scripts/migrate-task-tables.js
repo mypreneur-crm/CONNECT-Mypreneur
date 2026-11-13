@@ -40,6 +40,24 @@ async function runMigration() {
     console.log(` - ${Object.values(t)[0]}`);
   }
 
+  // Ensure handoff columns exist on connect_task_tasks
+  const existingCols = await db.all(
+    "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'connect_task_tasks'"
+  );
+  const colNames = existingCols.map(c => c.COLUMN_NAME);
+  if (!colNames.includes('previous_owner_employee_id')) {
+    await db.run("ALTER TABLE connect_task_tasks ADD COLUMN previous_owner_employee_id INT NULL AFTER owner_employee_id");
+    console.log("✓ Added column previous_owner_employee_id to connect_task_tasks");
+  } else {
+    console.log("✓ Column previous_owner_employee_id already present");
+  }
+  if (!colNames.includes('handoff_notes')) {
+    await db.run("ALTER TABLE connect_task_tasks ADD COLUMN handoff_notes TEXT NULL AFTER description");
+    console.log("✓ Added column handoff_notes to connect_task_tasks");
+  } else {
+    console.log("✓ Column handoff_notes already present");
+  }
+
   await db.close();
   console.log('\nMigration completed successfully!');
 }

@@ -487,6 +487,18 @@
     const isTimerRunning = tm.activeTimer && tm.activeTimer.task_id === t.id;
     const isApprovalPending = t.requires_approval && t.approval_status === 'PENDING';
 
+    const timeDisplay = (t.estimated_minutes && t.estimated_minutes > 0)
+      ? `⏱️ <strong>${formatMins(t.actual_minutes || 0)}</strong> / ${formatMins(t.estimated_minutes)}`
+      : `⏱️ <strong>${formatMins(t.actual_minutes || 0)}</strong> logged`;
+
+    const contributorBadge = (t.contributor_count && t.contributor_count > 1)
+      ? `<span class="badge-contributor" title="Worked on by ${t.contributor_count} persons">👥 ${t.contributor_count} staff</span>`
+      : '';
+
+    const handoffBadge = t.previous_owner_name
+      ? `<span class="badge-handoff" title="Handed off from ${escHtml(t.previous_owner_name)}">🔀 From: ${escHtml(t.previous_owner_name.split(' ')[0])}</span>`
+      : '';
+
     return `
     <div class="task-card ${isOverdue ? 'is-overdue' : ''}" style="margin:0;" onclick="tmOpenTaskDetails('${t.id}')">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
@@ -496,9 +508,11 @@
             ${t.status === 'COMPLETED' ? '✓' : '●'}
           </div>
           <div>
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;flex-wrap:wrap;">
               <span class="task-code">${escHtml(t.task_code)}</span>
               <span class="badge-priority ${t.priority.toLowerCase()}">${escHtml(t.priority)}</span>
+              ${handoffBadge}
+              ${contributorBadge}
               ${isOverdue ? `<span class="badge-overdue-alert">🚨 Overdue (${pendingDays}d pending)</span>` : ''}
               ${isApprovalPending ? `<span style="font-size:11px;background:#FEF3C7;color:#92400E;padding:2px 7px;border-radius:4px;font-weight:700;">Pending Approval</span>` : ''}
             </div>
@@ -508,7 +522,7 @@
 
         <div style="display:flex;align-items:center;gap:12px;" onclick="event.stopPropagation()">
           <div style="font-size:12.5px;color:var(--muted);text-align:right;">
-            <div>⏱️ <strong>${formatMins(t.actual_minutes || 0)}</strong> / ${formatMins(t.estimated_minutes)}</div>
+            <div>${timeDisplay}</div>
             <div style="font-size:11.5px;">Due: ${t.due_date ? new Date(t.due_date).toLocaleDateString() : 'None'}</div>
           </div>
 
@@ -650,11 +664,27 @@
     const pendingDays = getDaysPending(t.due_date);
     const isApprovalPending = t.requires_approval && t.approval_status === 'PENDING';
 
+    const timeDisplay = (t.estimated_minutes && t.estimated_minutes > 0)
+      ? `${formatMins(t.actual_minutes || 0)}/${formatMins(t.estimated_minutes)}`
+      : `${formatMins(t.actual_minutes || 0)} logged`;
+
+    const contributorBadge = (t.contributor_count && t.contributor_count > 1)
+      ? `<span class="badge-contributor" title="Worked on by ${t.contributor_count} persons">👥 ${t.contributor_count}</span>`
+      : '';
+
+    const handoffBadge = t.previous_owner_name
+      ? `<span class="badge-handoff" title="Handed off from ${escHtml(t.previous_owner_name)}">🔀 From: ${escHtml(t.previous_owner_name.split(' ')[0])}</span>`
+      : '';
+
     return `
     <div class="task-card ${isOverdue ? 'is-overdue' : ''}" onclick="tmOpenTaskDetails('${t.id}')">
       <div class="task-card-header">
         <span class="task-code">${escHtml(t.task_code)}</span>
-        <span class="badge-priority ${t.priority.toLowerCase()}">${escHtml(t.priority)}</span>
+        <div style="display:flex;align-items:center;gap:4px;">
+          ${handoffBadge}
+          ${contributorBadge}
+          <span class="badge-priority ${t.priority.toLowerCase()}">${escHtml(t.priority)}</span>
+        </div>
       </div>
 
       <div class="task-card-title">${escHtml(t.title)}</div>
@@ -670,7 +700,7 @@
       <div class="task-card-meta">
         <span style="font-weight:600;color:var(--navy);font-size:11.5px;">${escHtml(t.owner_name || 'Unassigned')}</span>
         <div style="display:flex;align-items:center;gap:6px;">
-          <span>⏱️ ${formatMins(t.actual_minutes || 0)}/${formatMins(t.estimated_minutes)}</span>
+          <span>⏱️ ${timeDisplay}</span>
         </div>
       </div>
     </div>
@@ -1344,8 +1374,8 @@
               </select>
             </div>
             <div>
-              <label style="display:block;font-size:12.5px;font-weight:700;color:var(--navy);margin-bottom:4px;">Est. Time (Mins) *</label>
-              <input type="number" id="tf_est_mins" required min="5" step="5" value="${targetEstMins}" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:10px;">
+              <label style="display:block;font-size:12.5px;font-weight:700;color:var(--navy);margin-bottom:4px;">Est. Time (Mins) <span style="font-weight:400;color:var(--muted);">(Optional)</span></label>
+              <input type="number" id="tf_est_mins" min="0" step="5" placeholder="Optional (e.g. 60)" value="${(targetEstMins && targetEstMins !== 60) ? targetEstMins : ''}" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:10px;">
             </div>
             <div>
               <label style="display:block;font-size:12.5px;font-weight:700;color:var(--navy);margin-bottom:4px;">Due Date</label>
@@ -1392,7 +1422,7 @@
       team_id: parseInt($tm('tf_team_id').value, 10),
       owner_employee_id: ownerVal,
       priority: $tm('tf_priority').value,
-      estimated_minutes: parseInt($tm('tf_est_mins').value, 10) || 60,
+      estimated_minutes: parseInt($tm('tf_est_mins').value, 10) || 0,
       due_date: $tm('tf_due_date').value || null,
       description: $tm('tf_description').value.trim(),
       requires_approval: $tm('tf_requires_approval').checked,
@@ -1447,6 +1477,28 @@
 
           <div class="dup-modal-body" style="gap:16px;">
             <h2 style="font-size:18px;font-weight:800;color:var(--navy);margin:0;">${escHtml(t.title)}</h2>
+
+            <!-- Handoff Banner if handed off from someone -->
+            ${t.previous_owner_name ? `
+              <div class="handoff-banner">
+                <div style="display:flex;align-items:center;gap:12px;">
+                  <div style="font-size:22px;">🔀</div>
+                  <div>
+                    <div style="font-size:13.5px;font-weight:700;color:#1E40AF;">
+                      Handed off from <strong>${escHtml(t.previous_owner_name)}</strong> ${t.previous_team_name ? `(${escHtml(t.previous_team_name)})` : ''}
+                    </div>
+                    ${t.handoff_notes ? `
+                      <div style="font-size:12.5px;color:#1D4ED8;margin-top:2px;">
+                        ${escHtml(t.handoff_notes).replace(/\n/g, '<br>')}
+                      </div>
+                    ` : ''}
+                  </div>
+                </div>
+                <button class="btn btn-sm" style="background:#2563EB;color:#FFF;border-radius:8px;font-weight:700;white-space:nowrap;" onclick="tmOpenReturnHandoffModal('${t.id}', '${escHtml(t.previous_owner_name)}')">
+                  ↩ Return to ${escHtml(t.previous_owner_name.split(' ')[0])}
+                </button>
+              </div>
+            ` : ''}
 
             <!-- Approval Gate Warning Banner if pending -->
             ${isApprovalPending ? `
@@ -1504,11 +1556,15 @@
               <div>
                 <span style="font-size:11px;text-transform:uppercase;font-weight:700;color:#166534;">Time Tracked</span>
                 <div style="font-size:18px;font-weight:800;color:#14532D;margin-top:2px;">
-                  ${formatMins(t.actual_minutes || 0)} <span style="font-size:13px;font-weight:500;color:#15803D;">/ ${formatMins(t.estimated_minutes)}</span>
+                  ${formatMins(t.actual_minutes || 0)} <span style="font-size:13px;font-weight:500;color:#15803D;">${(t.estimated_minutes && t.estimated_minutes > 0) ? `/ ${formatMins(t.estimated_minutes)}` : 'logged'}</span>
                 </div>
               </div>
 
-              <div style="display:flex;align-items:center;gap:10px;">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                <button class="btn btn-sm btn-secondary" style="border:1.5px solid #CBD5E1;font-weight:700;" onclick="tmOpenHandoffModal('${t.id}')">
+                  🔀 Handoff to Team Member
+                </button>
+
                 <button class="btn btn-sm btn-secondary" onclick="tmOpenManualLogModal('${t.id}')">
                   + Log Time Manually
                 </button>
@@ -1525,6 +1581,105 @@
                   </button>
                 `}
               </div>
+            </div>
+
+            <!-- Time Utilised by Persons & Teams Section -->
+            <div style="border-top:1px solid var(--border);padding-top:16px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+                <strong style="font-size:14px;color:var(--navy);display:flex;align-items:center;gap:6px;">
+                  <span>⏱️</span> Time Utilised by Persons &amp; Teams
+                </strong>
+                <span style="font-size:12px;color:var(--muted);font-weight:600;">
+                  Total: <strong>${formatMins(t.actual_minutes || 0)}</strong> across ${(t.time_by_employee || []).length} contributor${(t.time_by_employee || []).length === 1 ? '' : 's'}
+                </span>
+              </div>
+
+              <!-- Grid of Team & Person Breakdown -->
+              <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:12px;margin-bottom:14px;">
+                <!-- By Person -->
+                <div class="time-breakdown-card">
+                  <div style="font-size:11.5px;font-weight:700;text-transform:uppercase;color:#475569;margin-bottom:8px;">
+                    👤 Time by Person
+                  </div>
+                  ${(t.time_by_employee && t.time_by_employee.length > 0) ? `
+                    <div style="display:flex;flex-direction:column;gap:10px;">
+                      ${t.time_by_employee.map(emp => {
+                        const pct = t.actual_minutes > 0 ? Math.round((emp.total_minutes / t.actual_minutes) * 100) : 0;
+                        return `
+                          <div>
+                            <div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;">
+                              <div>
+                                <strong style="color:var(--navy);">${escHtml(emp.employee_name)}</strong>
+                                <span style="color:var(--muted);font-size:11.5px;"> (${escHtml(emp.team_name || 'Staff')})</span>
+                              </div>
+                              <span style="font-weight:700;color:#0F0147;">${formatMins(emp.total_minutes)} <span style="font-weight:400;color:var(--muted);font-size:11px;">(${pct}%)</span></span>
+                            </div>
+                            <div class="time-progress-bar-bg">
+                              <div class="time-progress-bar-fill" style="width:${pct}%;"></div>
+                            </div>
+                          </div>
+                        `;
+                      }).join('')}
+                    </div>
+                  ` : `
+                    <div style="font-size:12px;color:var(--muted);">No work recorded yet. Start the timer to begin tracking!</div>
+                  `}
+                </div>
+
+                <!-- By Team -->
+                <div class="time-breakdown-card">
+                  <div style="font-size:11.5px;font-weight:700;text-transform:uppercase;color:#475569;margin-bottom:8px;">
+                    🏢 Time by Team
+                  </div>
+                  ${(t.time_by_team && t.time_by_team.length > 0) ? `
+                    <div style="display:flex;flex-direction:column;gap:10px;">
+                      ${t.time_by_team.map(tmItem => {
+                        const pct = t.actual_minutes > 0 ? Math.round((tmItem.total_minutes / t.actual_minutes) * 100) : 0;
+                        return `
+                          <div>
+                            <div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;">
+                              <div>
+                                <strong style="color:var(--navy);">${escHtml(tmItem.team_name)}</strong>
+                                <span style="color:var(--muted);font-size:11.5px;"> (${tmItem.member_count} member${tmItem.member_count === 1 ? '' : 's'})</span>
+                              </div>
+                              <span style="font-weight:700;color:#0F0147;">${formatMins(tmItem.total_minutes)} <span style="font-weight:400;color:var(--muted);font-size:11px;">(${pct}%)</span></span>
+                            </div>
+                            <div class="time-progress-bar-bg">
+                              <div class="time-progress-bar-fill purple" style="width:${pct}%;"></div>
+                            </div>
+                          </div>
+                        `;
+                      }).join('')}
+                    </div>
+                  ` : `
+                    <div style="font-size:12px;color:var(--muted);">No team time recorded yet.</div>
+                  `}
+                </div>
+              </div>
+
+              <!-- Detailed Work Sessions Log -->
+              ${(t.time_entries && t.time_entries.length > 0) ? `
+                <details style="background:#FFF;border:1px solid #E2E8F0;border-radius:10px;padding:10px 14px;">
+                  <summary style="font-size:12.5px;font-weight:700;color:var(--navy);cursor:pointer;outline:none;">
+                    View Work Sessions History (${t.time_entries.length} log${t.time_entries.length === 1 ? '' : 's'})
+                  </summary>
+                  <div class="time-session-timeline" style="margin-top:10px;">
+                    ${t.time_entries.map(ent => `
+                      <div class="time-session-row">
+                        <div>
+                          <strong style="color:var(--navy);">${escHtml(ent.employee_name)}</strong>
+                          <span style="color:var(--muted);font-size:11px;"> · ${escHtml(ent.team_name)} · ${ent.work_date ? new Date(ent.work_date).toLocaleDateString() : ''}</span>
+                          ${ent.notes ? `<div style="font-size:11.5px;color:#475569;margin-top:2px;"><em>"${escHtml(ent.notes)}"</em></div>` : ''}
+                        </div>
+                        <div style="text-align:right;">
+                          <span style="font-weight:700;color:#15803D;">+${formatMins(ent.duration_minutes)}</span>
+                          <div style="font-size:10.5px;color:var(--muted);">${ent.entry_type === 'TIMER' ? '⏱️ Timer' : '📝 Manual'}</div>
+                        </div>
+                      </div>
+                    `).join('')}
+                  </div>
+                </details>
+              ` : ''}
             </div>
 
             <!-- Subtasks Section -->
@@ -1709,6 +1864,172 @@
       }
     }, 1000);
   }
+
+  // =========================================================================
+  // Inter-Team Handoff & Return Workflows
+  // =========================================================================
+  window.tmOpenHandoffModal = function(taskId) {
+    const anchor = $tm('tmModalAnchor');
+    // Group team members by department/team
+    const teams = {};
+    (tm.teamMembers || []).forEach(m => {
+      const tName = m.department || 'Other';
+      if (!teams[tName]) teams[tName] = [];
+      teams[tName].push(m);
+    });
+
+    anchor.innerHTML += `
+    <div class="dup-modal-overlay" id="tmHandoffModal" style="z-index:1150;">
+      <div class="dup-modal-box" style="max-width:480px;">
+        <div class="dup-modal-head">
+          <h3 style="font-size:16px;font-weight:700;color:var(--navy);margin:0;display:flex;align-items:center;gap:8px;">
+            <span>🔀</span> Handoff Task to Team Member
+          </h3>
+          <button class="btn" onclick="tmCloseModal('tmHandoffModal')" style="font-size:20px;color:var(--muted);">&times;</button>
+        </div>
+
+        <div class="dup-modal-body" style="gap:14px;">
+          <p style="font-size:12.5px;color:var(--muted);margin:0;">
+            Reassign this task to another team member to work on their part. Any active timer for your work will stop and log. The recipient can start their timer and return the task to you once finished.
+          </p>
+
+          <div>
+            <label style="display:block;font-size:12px;font-weight:700;color:var(--navy);margin-bottom:4px;">Filter by Team</label>
+            <select id="th_team_filter" onchange="tmFilterHandoffMembers()" class="dup-search-input" style="padding:8px 12px;font-size:13.5px;">
+              <option value="ALL">— All Teams —</option>
+              ${Object.keys(teams).map(tName => `<option value="${escHtml(tName)}">${escHtml(tName)}</option>`).join('')}
+            </select>
+          </div>
+
+          <div>
+            <label style="display:block;font-size:12px;font-weight:700;color:var(--navy);margin-bottom:4px;">Select Team Member *</label>
+            <select id="th_target_emp_id" required class="dup-search-input" style="padding:8px 12px;font-size:13.5px;">
+              <option value="">— Choose Member —</option>
+              ${(tm.teamMembers || []).map(m => `
+                <option value="${m.employee_id}" data-team="${escHtml(m.department || '')}" data-team-id="${m.team_id || ''}">
+                  ${escHtml(m.name)} (${escHtml(m.department || 'Staff')})
+                </option>
+              `).join('')}
+            </select>
+          </div>
+
+          <div>
+            <label style="display:block;font-size:12px;font-weight:700;color:var(--navy);margin-bottom:4px;">Dependency / Handoff Instructions</label>
+            <textarea id="th_notes" rows="3" class="dup-search-input" style="padding:8px 12px;font-size:13px;resize:vertical;" placeholder="E.g. Please finish the design asset so I can finalize the copy..."></textarea>
+          </div>
+        </div>
+
+        <div class="dup-actions-bar">
+          <button class="btn btn-secondary" onclick="tmCloseModal('tmHandoffModal')">Cancel</button>
+          <button class="btn btn-primary" style="background:#2563EB;color:#FFF;font-weight:700;" onclick="tmSubmitHandoff('${taskId}')">
+            Confirm Handoff
+          </button>
+        </div>
+      </div>
+    </div>
+    `;
+  };
+
+  window.tmFilterHandoffMembers = function() {
+    const filterEl = $tm('th_team_filter');
+    const empSelect = $tm('th_target_emp_id');
+    if (!filterEl || !empSelect) return;
+    const filterVal = filterEl.value;
+
+    Array.from(empSelect.options).forEach(opt => {
+      if (!opt.value) return;
+      const optTeam = opt.getAttribute('data-team');
+      if (filterVal === 'ALL' || optTeam === filterVal) {
+        opt.style.display = '';
+      } else {
+        opt.style.display = 'none';
+      }
+    });
+    empSelect.value = '';
+  };
+
+  window.tmSubmitHandoff = async function(taskId) {
+    const empSelect = $tm('th_target_emp_id');
+    const targetEmpId = parseInt(empSelect?.value, 10);
+    if (!targetEmpId) {
+      alert('Please choose a team member to hand off the task to.');
+      return;
+    }
+    const selectedOpt = empSelect.options[empSelect.selectedIndex];
+    const teamId = selectedOpt?.getAttribute('data-team-id') ? parseInt(selectedOpt.getAttribute('data-team-id'), 10) : null;
+    const notes = ($tm('th_notes')?.value || '').trim();
+
+    try {
+      await apiRequest(`/api/tasks/${taskId}/handoff`, {
+        method: 'POST',
+        body: {
+          target_employee_id: targetEmpId,
+          team_id: teamId,
+          notes
+        }
+      });
+      tmCloseModal('tmHandoffModal');
+      toast('Task handed off successfully!');
+      await tmLoadAll();
+      if (tm.selectedTask && tm.selectedTask.id === taskId) {
+        tmOpenTaskDetails(taskId);
+      }
+    } catch (err) {
+      alert(`Could not hand off task: ${err.message}`);
+    }
+  };
+
+  window.tmOpenReturnHandoffModal = function(taskId, prevOwnerName) {
+    const anchor = $tm('tmModalAnchor');
+    anchor.innerHTML += `
+    <div class="dup-modal-overlay" id="tmReturnModal" style="z-index:1150;">
+      <div class="dup-modal-box" style="max-width:440px;">
+        <div class="dup-modal-head">
+          <h3 style="font-size:16px;font-weight:700;color:var(--navy);margin:0;display:flex;align-items:center;gap:8px;">
+            <span>↩</span> Return Task to ${escHtml(prevOwnerName)}
+          </h3>
+          <button class="btn" onclick="tmCloseModal('tmReturnModal')" style="font-size:20px;color:var(--muted);">&times;</button>
+        </div>
+
+        <div class="dup-modal-body" style="gap:14px;">
+          <p style="font-size:12.5px;color:var(--muted);margin:0;">
+            Completed your part of this task? This will hand the task back to <strong>${escHtml(prevOwnerName)}</strong> so they can continue, finish, and submit it for completion. Any active timer for your work will stop and record.
+          </p>
+
+          <div>
+            <label style="display:block;font-size:12px;font-weight:700;color:var(--navy);margin-bottom:4px;">Completion Notes / Feedback</label>
+            <textarea id="tr_notes" rows="3" class="dup-search-input" style="padding:8px 12px;font-size:13px;resize:vertical;" placeholder="E.g. Completed design assets. Ready for final review."></textarea>
+          </div>
+        </div>
+
+        <div class="dup-actions-bar">
+          <button class="btn btn-secondary" onclick="tmCloseModal('tmReturnModal')">Cancel</button>
+          <button class="btn btn-primary" style="background:#10B981;color:#FFF;font-weight:700;" onclick="tmSubmitReturnHandoff('${taskId}')">
+            Confirm &amp; Return Task
+          </button>
+        </div>
+      </div>
+    </div>
+    `;
+  };
+
+  window.tmSubmitReturnHandoff = async function(taskId) {
+    const notes = ($tm('tr_notes')?.value || '').trim();
+    try {
+      await apiRequest(`/api/tasks/${taskId}/return-handoff`, {
+        method: 'POST',
+        body: { notes }
+      });
+      tmCloseModal('tmReturnModal');
+      toast('Task returned to original assignee!');
+      await tmLoadAll();
+      if (tm.selectedTask && tm.selectedTask.id === taskId) {
+        tmOpenTaskDetails(taskId);
+      }
+    } catch (err) {
+      alert(`Could not return task: ${err.message}`);
+    }
+  };
 
   // =========================================================================
   // Modal Helpers
