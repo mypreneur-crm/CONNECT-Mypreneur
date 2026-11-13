@@ -1262,14 +1262,17 @@ async function handleApi(req, res, url) {
       LEFT JOIN ${tTeams} t ON e.team_id = t.team_id
       LEFT JOIN ${tUsers} u ON u.employee_id = e.employee_id
       WHERE (e.status IS NULL OR UPPER(e.status) = 'ACTIVE')
+        AND e.employee_id != 1
+        AND NOT (LOWER(COALESCE(e.first_name, '')) = 'super' AND LOWER(COALESCE(e.last_name, '')) = 'admin')
+        AND LOWER(COALESCE(u.username, '')) != 'admin'
       ORDER BY t.team_name ASC, e.first_name ASC
     `);
 
-    // 2. Query today's approved leaves
+    // 2. Query today's approved leaves (do not leak private reason into directory)
     let activeLeaves = [];
     try {
       activeLeaves = await db.all(`
-        SELECT employee_id, reason, leave_duration, status
+        SELECT employee_id, leave_duration, status
         FROM leaves
         WHERE ? BETWEEN start_date AND end_date
           AND UPPER(status) = 'APPROVED'
@@ -1329,7 +1332,7 @@ async function handleApi(req, res, url) {
       if (leaveInfo) {
         status = 'ON_LEAVE';
         statusLabel = 'On Leave';
-        statusNote = leaveInfo.leave_duration === 'HALF_DAY' ? 'Half Day Leave' : (leaveInfo.reason ? `Leave: ${leaveInfo.reason}` : 'Approved Leave');
+        statusNote = leaveInfo.leave_duration === 'HALF_DAY' ? 'Half Day Leave' : 'On Leave';
         stats.on_leave++;
       } else if (isHeartbeatActive && cp && cp.status === 'AWAY') {
         status = 'AWAY';

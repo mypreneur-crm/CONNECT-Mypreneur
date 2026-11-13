@@ -3158,8 +3158,13 @@ function renderContactsContent() {
     return;
   }
 
-  // Filter
-  let list = contactsState.contacts;
+  // Filter (excluding Super Admin from employee contacts)
+  let list = (contactsState.contacts || []).filter(c => {
+    if (Number(c.id) === 1) return false;
+    const nm = (c.name || '').toLowerCase();
+    if (nm === 'super admin' || nm.includes('super admin')) return false;
+    return true;
+  });
   if (contactsState.departmentFilter !== 'All') {
     list = list.filter(c => c.department === contactsState.departmentFilter);
   }
@@ -3227,7 +3232,7 @@ function renderContactsContent() {
                   ${esc(c.designation)}
                 </td>
                 <td style="padding:12px 14px;">
-                  <span class="presence-badge ${c.status.toLowerCase()}" title="${esc(c.status_note)}">
+                  <span class="presence-badge ${c.status.toLowerCase()}" title="${c.status === 'ON_LEAVE' ? 'On Leave' : esc(c.status_note)}">
                     ● ${esc(c.status_label)}
                   </span>
                 </td>
@@ -3290,15 +3295,15 @@ function renderContactsContent() {
               </div>
               <div style="margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                 <span class="dept-pill ${getDeptPillClass(c.department)}">${esc(c.department)}</span>
-                <span class="presence-badge ${c.status.toLowerCase()}" title="${esc(c.status_note)}">
+                <span class="presence-badge ${c.status.toLowerCase()}" title="${c.status === 'ON_LEAVE' ? 'On Leave' : esc(c.status_note)}">
                   ● ${esc(c.status_label)}
                 </span>
               </div>
             </div>
           </div>
 
-          <!-- Status note if available -->
-          ${c.status_note ? `
+          <!-- Status note if available (never display private leave reasons) -->
+          ${c.status_note && c.status !== 'ON_LEAVE' ? `
             <div style="font-size:11.5px;color:var(--muted);background:#F8FAFC;border-radius:8px;padding:6px 10px;display:flex;align-items:center;gap:6px;">
               <span>ℹ️</span> <span>${esc(c.status_note)}</span>
             </div>
@@ -3326,12 +3331,21 @@ function renderContactsContent() {
           </div>
 
           <!-- Actions Footer -->
-          <div style="display:flex;align-items:center;gap:8px;margin-top:auto;">
-            <button class="contact-action-btn primary" onclick="openContactChatModal(${c.id})" style="flex:1;">
-              💬 Connect / Share Link
+          <div style="display:flex;align-items:center;gap:6px;margin-top:auto;flex-wrap:wrap;">
+            <button class="contact-action-btn primary" onclick="window.MessengerApp.startDirectChatWithEmployee(${c.id})" style="flex:1;min-width:85px;" title="Messenger Chat">
+              💬 Chat
+            </button>
+            <button class="contact-action-btn" onclick="window.MessengerApp.startCallWithEmployee(${c.id}, 'AUDIO')" title="Voice Call" style="padding:6px 8px;">
+              📞
+            </button>
+            <button class="contact-action-btn" onclick="window.MessengerApp.startCallWithEmployee(${c.id}, 'VIDEO')" title="Video Call" style="padding:6px 8px;">
+              📹
+            </button>
+            <button class="contact-action-btn" onclick="openContactChatModal(${c.id})" title="Share Link or Note" style="padding:6px 8px;">
+              🔗
             </button>
             ${c.booking_link ? `
-              <a href="${esc(c.booking_link)}" target="_blank" rel="noopener" class="contact-action-btn" title="Book a Meeting">
+              <a href="${esc(c.booking_link)}" target="_blank" rel="noopener" class="contact-action-btn" title="Book a Meeting" style="padding:6px 8px;">
                 📅
               </a>
             ` : ''}

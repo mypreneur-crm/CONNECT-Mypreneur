@@ -520,8 +520,12 @@
         display: flex;
         align-items: flex-end;
         gap: 14px;
-        z-index: 9989;
+        z-index: 10005;
         pointer-events: none;
+        transition: right 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      .msg-chats-dock.panel-open {
+        right: 418px;
       }
       .msg-chat-box {
         width: 340px;
@@ -626,12 +630,12 @@
       .msg-modal-overlay {
         position: fixed;
         inset: 0;
-        background: rgba(15, 23, 42, 0.65);
-        backdrop-filter: blur(4px);
+        background: rgba(15, 23, 42, 0.75);
+        backdrop-filter: blur(6px);
         display: flex;
         align-items: center;
         justify-content: center;
-        z-index: 99999;
+        z-index: 100100;
       }
       .msg-modal-box {
         background: #FFF;
@@ -734,11 +738,16 @@
   function toggleMessenger(open) {
     state.messengerOpen = typeof open === 'boolean' ? open : !state.messengerOpen;
     const panel = document.getElementById('msgPanelWindow');
+    const dock = document.getElementById('msgChatsDock');
     if (panel) {
       panel.style.display = state.messengerOpen ? 'flex' : 'none';
       if (state.messengerOpen) {
         loadConversations();
       }
+    }
+    if (dock) {
+      if (state.messengerOpen) dock.classList.add('panel-open');
+      else dock.classList.remove('panel-open');
     }
   }
 
@@ -924,7 +933,13 @@
   function renderDirectoryTab(container) {
     let list = state.employees;
     const myEmpId = state.currentUser?.employeeId || state.currentUser?.id;
-    list = list.filter(e => Number(e.id) !== Number(myEmpId));
+    list = list.filter(e => {
+      if (Number(e.id) === Number(myEmpId)) return false;
+      if (Number(e.id) === 1) return false;
+      const nm = (e.name || '').toLowerCase();
+      if (nm === 'super admin' || nm.includes('super admin')) return false;
+      return true;
+    });
 
     if (state.searchQuery) {
       list = list.filter(e =>
@@ -983,6 +998,7 @@
      ========================================================================== */
 
   async function openFloatingChat(convId) {
+    toggleMessenger(false);
     if (!state.currentUser) {
       const u = window.session || (typeof session !== 'undefined' ? session : null);
       if (u) init(u);
@@ -1551,6 +1567,7 @@
   };
 
   async function startCallWithEmployee(receiverEmpId, callType = 'AUDIO') {
+    toggleMessenger(false);
     if (!state.currentUser) {
       const u = window.session || (typeof session !== 'undefined' ? session : null);
       if (u) init(u);
