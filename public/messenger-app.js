@@ -274,7 +274,12 @@
 
     window.addEventListener('beforeunload', () => {
       if (navigator.sendBeacon) {
-        navigator.sendBeacon('/api/chat/presence/heartbeat', JSON.stringify({ status: 'OFFLINE' }));
+        try {
+          const blob = new Blob([JSON.stringify({ status: 'OFFLINE' })], { type: 'application/json' });
+          navigator.sendBeacon('/api/chat/presence/heartbeat', blob);
+        } catch (e) {
+          navigator.sendBeacon('/api/chat/presence/heartbeat', JSON.stringify({ status: 'OFFLINE' }));
+        }
       }
     });
 
@@ -315,18 +320,19 @@
       const empId = el.dataset.empId || el.querySelector('[onclick*="openContactChatModal"]')?.getAttribute('onclick')?.match(/\d+/)?.[0];
       if (!empId) return;
       const p = state.presenceMap[empId];
-      if (!p) return;
+      const status = (p && p.status) ? p.status.toLowerCase() : 'offline';
+      const customStatus = (p && p.custom_status) ? p.custom_status : '';
 
       const dot = el.querySelector('.contact-status-dot');
-      if (dot) {
-        dot.className = `contact-status-dot ${p.status.toLowerCase()}`;
-        dot.title = `${p.status}: ${p.custom_status || ''}`;
+      if (dot && !dot.classList.contains('on_leave')) {
+        dot.className = `contact-status-dot ${status}`;
+        dot.title = `${capitalize(status)}${customStatus ? ': ' + customStatus : ''}`;
       }
 
       const badge = el.querySelector('.presence-badge');
-      if (badge) {
-        badge.className = `presence-badge ${p.status.toLowerCase()}`;
-        badge.textContent = `● ${capitalize(p.status)}`;
+      if (badge && !badge.classList.contains('on_leave')) {
+        badge.className = `presence-badge ${status}`;
+        badge.textContent = `● ${capitalize(status)}`;
       }
     });
 
@@ -349,9 +355,8 @@
     document.querySelectorAll('.msg-presence-dot[data-emp-id]').forEach(dot => {
       const id = dot.dataset.empId;
       const p = state.presenceMap[id];
-      if (p) {
-        dot.className = `msg-presence-dot ${p.status.toLowerCase()}`;
-      }
+      const status = (p && p.status) ? p.status.toLowerCase() : 'offline';
+      dot.className = `msg-presence-dot ${status}`;
     });
   }
 

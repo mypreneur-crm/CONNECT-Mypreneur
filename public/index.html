@@ -3266,7 +3266,7 @@ function renderContactsContent() {
   container.innerHTML = `
     <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(310px, 1fr));gap:16px;">
       ${list.map(c => `
-        <div class="contact-card">
+        <div class="contact-card" data-emp-id="${c.id}">
           <!-- Top Row: Avatar + Presence Dot + Name + Code -->
           <div style="display:flex;align-items:flex-start;gap:14px;">
             <div class="contact-avatar-wrap">

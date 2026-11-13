@@ -1,4 +1,7 @@
 'use strict';
+if (require('node:fs').existsSync('.env') && !process.env.DB_HOST) {
+  try { require('node:process').loadEnvFile('.env'); } catch (e) {}
+}
 
 const { MySQLDatabase, databaseConfig } = require('../lib/database');
 const { ChatService } = require('../lib/chat/chat-service');
@@ -126,6 +129,9 @@ async function testChatSuite() {
   const endedCall = await chatService.getCall(call.callId);
   assert.strictEqual(endedCall.status, 'ENDED');
   console.log('  WebRTC Call signaling complete and ended cleanly!');
+
+  // Cleanup test presence so database presence remains accurate
+  await db.run('UPDATE connect_employee_presence SET status = "OFFLINE", last_heartbeat = 0 WHERE employee_id IN (1, 22)');
 
   console.log('\n=== ALL CHAT BACKEND TESTS PASSED SUCCESSFULLY! ===\n');
   await db.close();

@@ -808,6 +808,13 @@ async function handleApi(req, res, url) {
   if (method === 'POST' && pathname === '/api/logout') {
     const auth = await requireAuth(req, res, { csrf: true });
     if (!auth) return;
+    const empId = auth.user.employeeId || auth.user.id;
+    if (chatService && empId) {
+      await chatService.updatePresence(empId, 'OFFLINE').catch(() => {});
+    }
+    if (empId) {
+      presenceMap.delete(Number(empId));
+    }
     await authProvider.recordLogout(auth.loginId, auth.user.id);
     return sendJson(res, 200, { ok: true }, { 'Set-Cookie': clearCookie() });
   }
@@ -1316,31 +1323,24 @@ async function handleApi(req, res, url) {
       let statusLabel = 'Offline';
       let statusNote = '';
 
+      // Live presence requires an active heartbeat or portal interaction within the last 60 seconds
+      const isHeartbeatActive = Boolean(lastSeenMs && (now - lastSeenMs <= 60 * 1000));
+
       if (leaveInfo) {
         status = 'ON_LEAVE';
         statusLabel = 'On Leave';
         statusNote = leaveInfo.leave_duration === 'HALF_DAY' ? 'Half Day Leave' : (leaveInfo.reason ? `Leave: ${leaveInfo.reason}` : 'Approved Leave');
         stats.on_leave++;
-      } else if (cp && cp.status === 'ONLINE') {
-        status = 'ONLINE';
-        statusLabel = 'Online';
-        statusNote = isTimerActive ? 'Working on Task' : (cp.custom_status || 'Active in Portal');
-        stats.online++;
-      } else if (cp && cp.status === 'AWAY') {
+      } else if (isHeartbeatActive && cp && cp.status === 'AWAY') {
         status = 'AWAY';
         statusLabel = 'Away';
         statusNote = cp.custom_status || 'Away';
         stats.away++;
-      } else if (isTimerActive || (lastSeenMs && (now - lastSeenMs < 2 * 60 * 1000))) {
+      } else if (isHeartbeatActive) {
         status = 'ONLINE';
         statusLabel = 'Online';
-        statusNote = isTimerActive ? 'Working on Task' : 'Active in Portal';
+        statusNote = isTimerActive ? 'Working on Task' : (cp && cp.custom_status ? cp.custom_status : 'Active in Portal');
         stats.online++;
-      } else if ((lastSeenMs && (now - lastSeenMs < 10 * 60 * 1000)) || (attInfo && attInfo.check_in && !attInfo.check_out)) {
-        status = 'AWAY';
-        statusLabel = 'Away';
-        statusNote = attInfo ? 'Checked in today' : 'Away';
-        stats.away++;
       } else {
         status = 'OFFLINE';
         statusLabel = 'Offline';
