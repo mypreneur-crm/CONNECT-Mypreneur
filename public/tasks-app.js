@@ -345,10 +345,19 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px;height:20px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
             ${viewedMember ? escHtml(viewedMember.name) + "'s" : "Today's"} 8-Hour Capacity &amp; Utilization
           </div>
-          <span class="capacity-badge ${cap.isOverAllocated ? 'over-allocated' : ''}">
-            ${cap.isOverAllocated ? '⚠️ Over-Allocated (' + cap.plannedAllocationPct + '%)' : cap.plannedAllocationPct + '% Planned (' + formatMins(cap.totalPlannedMinutes) + ' / 8h)'}
+          <span class="capacity-badge ${cap.isOnLeave ? 'on-leave' : cap.isOverAllocated ? 'over-allocated' : ''}">
+            ${cap.isOnLeave 
+              ? `🏖️ On Leave Today · ${cap.plannedAllocationPct}% Planned (${formatMins(cap.totalPlannedMinutes)})` 
+              : (cap.isOverAllocated ? '⚠️ Over-Allocated (' + cap.plannedAllocationPct + '%)' : cap.plannedAllocationPct + '% Planned (' + formatMins(cap.totalPlannedMinutes) + ' / 8h)')}
           </span>
         </div>
+
+        ${cap.isOnLeave ? `
+        <div style="background:rgba(245, 158, 11, 0.15);border:1px solid rgba(245, 158, 11, 0.4);border-radius:8px;padding:8px 12px;font-size:12.5px;color:#FDE68A;display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+          <span>🏖️</span>
+          <span><strong>Approved Leave:</strong> ${viewedMember ? escHtml(viewedMember.name) : 'Employee'} has an approved ${escHtml(cap.leaveDetails?.duration || 'full-day')} leave today${cap.leaveDetails?.reason ? `: "${escHtml(cap.leaveDetails.reason)}"` : ''}. Planned workload: ${formatMins(cap.totalPlannedMinutes)} (${cap.plannedAllocationPct}%).</span>
+        </div>
+        ` : ''}
 
         <div style="font-size:12px;color:rgba(255,255,255,0.85);margin-top:-6px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
           <span>🕒 <strong>8 Working Hours</strong> (Lunch &amp; 1h break excluded)</span>
@@ -380,8 +389,8 @@
           </div>
           <div class="cap-stat-item">
             <span class="cap-stat-label">Remaining Free</span>
-            <span class="cap-stat-value" style="color:${cap.remainingAssignableMinutes > 0 ? '#38B6FF' : '#F87171'};font-weight:700;">
-              ${formatMins(cap.remainingAssignableMinutes)}
+            <span class="cap-stat-value" style="color:${cap.isOnLeave ? '#FDE68A' : cap.remainingAssignableMinutes > 0 ? '#38B6FF' : '#F87171'};font-weight:700;">
+              ${cap.isOnLeave ? '🏖️ On Leave' : formatMins(cap.remainingAssignableMinutes)}
             </span>
           </div>
         </div>
@@ -733,7 +742,7 @@
       `;
     }
 
-    const totalCap = cap.effectiveCapacity || 480;
+    const totalCap = cap.effectiveCapacity > 0 ? cap.effectiveCapacity : 480;
     const crmMins = cap.crmMinutes || 0;
     const taskMins = cap.taskAllocMinutes || 0;
     const actualMins = cap.actualMinutesWorked || 0;
@@ -741,41 +750,48 @@
     const overMins = cap.overAllocationMinutes || 0;
     const allocPct = cap.plannedAllocationPct || 0;
     const isOver = cap.isOverAllocated;
+    const isOnLeave = Boolean(cap.isOnLeave);
 
     const crmPct = Math.min(100, Math.round((crmMins / totalCap) * 100));
     const taskPct = Math.min(100 - crmPct, Math.round((taskMins / totalCap) * 100));
     const actualPct = Math.min(100, Math.round((actualMins / totalCap) * 100));
-    const freePct = Math.max(0, 100 - crmPct - taskPct);
+    const freePct = isOnLeave ? 0 : Math.max(0, 100 - crmPct - taskPct);
 
     const crmItems = tm.filteredEmployeeCrmWorkload?.items || [];
     const crmCount = crmItems.length;
     const empTasks = (filteredTasks || tm.tasks).filter(t => String(t.owner_employee_id) === String(member.employee_id));
 
     return `
-    <div style="background:#FFF;border:1.5px solid ${isOver ? '#FCA5A5' : '#7DD3FC'};border-radius:14px;padding:18px 22px;display:flex;flex-direction:column;gap:14px;box-shadow:0 4px 16px rgba(2, 132, 199, 0.08);">
+    <div style="background:#FFF;border:1.5px solid ${isOnLeave ? '#FCD34D' : isOver ? '#FCA5A5' : '#7DD3FC'};border-radius:14px;padding:18px 22px;display:flex;flex-direction:column;gap:14px;box-shadow:0 4px 16px rgba(2, 132, 199, 0.08);">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
         <div style="display:flex;align-items:center;gap:12px;">
-          <div style="width:46px;height:46px;border-radius:12px;background:#EBF7FF;color:#0284C7;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;">
-            👤
+          <div style="width:46px;height:46px;border-radius:12px;background:${isOnLeave ? '#FEF3C7' : '#EBF7FF'};color:${isOnLeave ? '#D97706' : '#0284C7'};display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;">
+            ${isOnLeave ? '🏖️' : '👤'}
           </div>
           <div>
             <div style="display:flex;align-items:center;gap:8px;">
               <h3 style="font-size:16px;font-weight:800;color:var(--navy);margin:0;">${escHtml(member.name)}</h3>
-              <span style="font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:6px;background:${isOver ? '#FEE2E2' : allocPct > 80 ? '#FEF3C7' : '#ECFDF5'};color:${isOver ? '#991B1B' : allocPct > 80 ? '#92400E' : '#065F46'};">
-                ${isOver ? '⚠️ ' + allocPct + '% Over-Allocated' : allocPct + '% Planned Workload'}
+              <span style="font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:6px;background:${isOnLeave ? '#FEF3C7' : isOver ? '#FEE2E2' : allocPct > 80 ? '#FEF3C7' : '#ECFDF5'};color:${isOnLeave ? '#92400E' : isOver ? '#991B1B' : allocPct > 80 ? '#92400E' : '#065F46'};">
+                ${isOnLeave ? `🏖️ On Leave Today · ${allocPct}% Planned (${formatMins(cap.totalPlannedMinutes)})` : isOver ? '⚠️ ' + allocPct + '% Over-Allocated' : allocPct + '% Planned Workload'}
               </span>
             </div>
             <div style="font-size:12.5px;color:var(--muted);margin-top:2px;">
               ${escHtml(member.department || 'Staff')} · ${escHtml(member.designation || 'Team Member')} · Standard Shift: 8.0 Hours (480 mins) · Excl. 1h Lunch/Break
             </div>
+            ${isOnLeave ? `
+            <div style="margin-top:6px;background:#FFFBEB;border:1px solid #FCD34D;border-radius:8px;padding:6px 10px;font-size:12px;color:#92400E;display:flex;align-items:center;gap:6px;">
+              <span>🏖️</span>
+              <span><strong>Approved Leave:</strong> On approved ${escHtml(cap.leaveDetails?.duration || 'full-day')} leave today${cap.leaveDetails?.reason ? `: "${escHtml(cap.leaveDetails.reason)}"` : ''}. Planned workload: ${formatMins(cap.totalPlannedMinutes)} (${allocPct}%).</span>
+            </div>
+            ` : ''}
           </div>
         </div>
 
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
           <div style="text-align:right;padding-right:6px;">
             <div style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;">Free Hours Available</div>
-            <div style="font-size:18px;font-weight:800;color:${freeMins > 0 ? '#059669' : '#DC2626'};">
-              ${freeMins > 0 ? `🟢 ${formatMins(freeMins)} Free` : `🔴 0m (${formatMins(overMins)} Over)`}
+            <div style="font-size:18px;font-weight:800;color:${isOnLeave ? '#D97706' : freeMins > 0 ? '#059669' : '#DC2626'};">
+              ${isOnLeave ? `🏖️ 0m (On Leave)` : freeMins > 0 ? `🟢 ${formatMins(freeMins)} Free` : `🔴 0m (${formatMins(overMins)} Over)`}
             </div>
           </div>
           <button class="btn btn-sm" onclick="tmAssignTaskToEmployee('${member.employee_id}', '${escHtml(member.name)}', ${member.team_id || 2}, ${freeMins})" style="background:var(--cyan);color:#0F0147;font-weight:800;padding:8px 16px;border-radius:10px;display:flex;align-items:center;gap:6px;box-shadow:0 2px 10px rgba(0, 210, 255, 0.3);">
@@ -970,20 +986,20 @@
       }
 
       container.innerHTML = tm.teamCapacity.map(m => {
-        const c = m.capacity || { effectiveCapacity: 480, dailyWorkloadTargetMinutes: 288, taskAssignmentsTargetMinutes: 192, plannedAllocationPct: 0, crmMinutes: 0, taskAllocMinutes: 0, remainingAssignableMinutes: 480, isOverAllocated: false };
-        const total = c.effectiveCapacity || 480;
+        const c = m.capacity || { effectiveCapacity: 480, dailyWorkloadTargetMinutes: 288, taskAssignmentsTargetMinutes: 192, plannedAllocationPct: 0, crmMinutes: 0, taskAllocMinutes: 0, remainingAssignableMinutes: 480, isOverAllocated: false, isOnLeave: false };
+        const total = c.effectiveCapacity > 0 ? c.effectiveCapacity : 480;
         const crmPct = Math.min(100, Math.round((c.crmMinutes / total) * 100));
         const taskPct = Math.min(100 - crmPct, Math.round((c.taskAllocMinutes / total) * 100));
 
         return `
-        <div class="card" style="padding:16px 18px;background:#FFF;border-radius:14px;border:1px solid var(--border);display:flex;flex-direction:column;gap:12px;">
+        <div class="card" style="padding:16px 18px;background:#FFF;border-radius:14px;border:1px solid ${c.isOnLeave ? '#FCD34D' : 'var(--border)'};display:flex;flex-direction:column;gap:12px;">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;">
             <div>
               <strong style="font-size:14.5px;color:var(--navy);display:block;">${escHtml(m.name)}</strong>
               <span style="font-size:12px;color:var(--muted);">${escHtml(m.department || 'General')} · ${escHtml(m.designation || 'Staff')}</span>
             </div>
-            <span style="font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px;background:${c.isOverAllocated ? '#FEE2E2' : c.plannedAllocationPct > 80 ? '#FEF3C7' : '#ECFDF5'};color:${c.isOverAllocated ? '#991B1B' : c.plannedAllocationPct > 80 ? '#92400E' : '#065F46'};">
-              ${c.isOverAllocated ? '⚠️ ' + c.plannedAllocationPct + '% Over' : c.plannedAllocationPct + '% Utilized'}
+            <span style="font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px;background:${c.isOnLeave ? '#FEF3C7' : c.isOverAllocated ? '#FEE2E2' : c.plannedAllocationPct > 80 ? '#FEF3C7' : '#ECFDF5'};color:${c.isOnLeave ? '#92400E' : c.isOverAllocated ? '#991B1B' : c.plannedAllocationPct > 80 ? '#92400E' : '#065F46'};">
+              ${c.isOnLeave ? '🏖️ On Leave' + (c.plannedAllocationPct > 0 ? ' (' + c.plannedAllocationPct + '%)' : '') : c.isOverAllocated ? '⚠️ ' + c.plannedAllocationPct + '% Over' : c.plannedAllocationPct + '% Utilized'}
             </span>
           </div>
 
@@ -997,8 +1013,8 @@
           <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted);border-top:1px solid #F1F5F9;padding-top:8px;">
             <span>CRM (60%): <strong>${formatMins(c.crmMinutes)}</strong></span>
             <span>Tasks (40%): <strong>${formatMins(c.taskAllocMinutes)}</strong></span>
-            <span style="color:${c.remainingAssignableMinutes > 0 ? '#10B981' : '#EF4444'};font-weight:700;">
-              Free: ${formatMins(c.remainingAssignableMinutes)}
+            <span style="color:${c.isOnLeave ? '#D97706' : c.remainingAssignableMinutes > 0 ? '#10B981' : '#EF4444'};font-weight:700;">
+              ${c.isOnLeave ? '🏖️ On Leave Today' : 'Free: ' + formatMins(c.remainingAssignableMinutes)}
             </span>
           </div>
 
