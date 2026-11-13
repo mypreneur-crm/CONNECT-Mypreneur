@@ -237,11 +237,14 @@
     toast('Task data refreshed');
   };
 
-  window.tmSwitchTab = function(tabName) {
+  window.tmSwitchTab = async function(tabName) {
     tm.currentTab = tabName;
     document.querySelectorAll('.tm-tab-btn').forEach(b => b.classList.remove('active'));
     const btn = $tm(`tabBtn-${tabName}`);
     if (btn) btn.classList.add('active');
+    if (tabName === 'approvals') {
+      await tmFetchTasks();
+    }
     tmRenderTab();
   };
 
@@ -496,7 +499,7 @@
     const isOverdue = t.is_overdue && t.status !== 'COMPLETED';
     const pendingDays = getDaysPending(t.due_date);
     const isTimerRunning = tm.activeTimer && tm.activeTimer.task_id === t.id;
-    const isApprovalPending = t.requires_approval && t.approval_status === 'PENDING';
+    const isApprovalPending = t.approval_status === 'PENDING';
 
     const timeDisplay = (t.estimated_minutes && t.estimated_minutes > 0)
       ? `⏱️ <strong>${formatMins(t.actual_minutes || 0)}</strong> / ${formatMins(t.estimated_minutes)}`
@@ -673,7 +676,7 @@
   function renderKanbanCard(t) {
     const isOverdue = t.is_overdue && t.status !== 'COMPLETED';
     const pendingDays = getDaysPending(t.due_date);
-    const isApprovalPending = t.requires_approval && t.approval_status === 'PENDING';
+    const isApprovalPending = t.approval_status === 'PENDING';
 
     const timeDisplay = (t.estimated_minutes && t.estimated_minutes > 0)
       ? `${formatMins(t.actual_minutes || 0)}/${formatMins(t.estimated_minutes)}`
@@ -1134,7 +1137,7 @@
       </div>`;
     }
 
-    const pendingTasks = tm.tasks.filter(t => t.requires_approval && t.approval_status === 'PENDING');
+    const pendingTasks = (tm.tasks || []).filter(t => t.approval_status === 'PENDING');
 
     return `
     <div style="display:flex;flex-direction:column;gap:18px;">
@@ -1164,7 +1167,7 @@
                   </div>
                   <strong style="font-size:15px;color:var(--navy);">${escHtml(t.title)}</strong>
                   <div style="font-size:12.5px;color:var(--muted);margin-top:4px;">
-                    Requested by: <strong>${escHtml(t.created_by_name || 'Staff')}</strong> · Team: <strong>${getTeamNameById(t.team_id)}</strong> · Est: <strong>${formatMins(t.estimated_minutes)}</strong>
+                    Requested by: <strong>${escHtml(t.created_by_name || t.owner_name || 'Staff')}</strong> · Team: <strong>${getTeamNameById(t.team_id)}</strong> · Est: <strong>${formatMins(t.estimated_minutes)}</strong>
                   </div>
                 </div>
 
@@ -1477,7 +1480,7 @@
       const isOverdue = t.is_overdue && t.status !== 'COMPLETED';
       const pendingDays = getDaysPending(t.due_date);
       const isTimerRunning = tm.activeTimer && tm.activeTimer.task_id === t.id;
-      const isApprovalPending = t.requires_approval && t.approval_status === 'PENDING';
+      const isApprovalPending = t.approval_status === 'PENDING';
 
       const anchor = $tm('tmModalAnchor');
       anchor.innerHTML = `
