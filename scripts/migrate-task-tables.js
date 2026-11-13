@@ -82,6 +82,30 @@ async function runMigration() {
     console.warn("Could not modify event_date:", e.message);
   }
 
+  // Ensure connect_employee_messages table exists
+  try {
+    await db.run(`
+      CREATE TABLE IF NOT EXISTS connect_employee_messages (
+        id CHAR(36) NOT NULL,
+        from_user_id BIGINT UNSIGNED NOT NULL,
+        from_employee_id BIGINT UNSIGNED NULL,
+        to_employee_id BIGINT UNSIGNED NOT NULL,
+        message_type ENUM('message','link') NOT NULL DEFAULT 'message',
+        content TEXT NOT NULL,
+        link_url TEXT NULL,
+        link_title VARCHAR(255) NULL,
+        is_read TINYINT(1) NOT NULL DEFAULT 0,
+        created_at VARCHAR(35) NOT NULL,
+        PRIMARY KEY (id),
+        KEY idx_emp_msg_to (to_employee_id, is_read),
+        KEY idx_emp_msg_thread (from_user_id, to_employee_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log("✓ Table connect_employee_messages created/verified");
+  } catch (e) {
+    console.warn("Could not create connect_employee_messages:", e.message);
+  }
+
   await db.close();
   console.log('\nMigration completed successfully!');
 }

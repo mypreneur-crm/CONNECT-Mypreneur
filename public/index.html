@@ -798,6 +798,37 @@ td .t-url{
 .evidence-item .ev-meta input{width:100%;margin-top:4px;padding:4px 8px;font-size:12px;border:1px solid var(--border);border-radius:6px}
 .filter-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:14px 18px;background:var(--card);border:1px solid var(--border);border-radius:12px;margin-bottom:16px}
 .filter-bar select,.filter-bar input{padding:7px 12px;font-size:13px;border:1px solid var(--border);border-radius:8px;background:#FFF}
+
+/* ============ EMPLOYEE CONTACTS & DIRECTORY ============ */
+.contact-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:12px;transition:all 0.18s;position:relative;box-shadow:0 1px 3px rgba(0,0,0,0.04)}
+.contact-card:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg);border-color:#CBD5E1}
+.contact-avatar-wrap{position:relative;width:52px;height:52px;flex-shrink:0}
+.contact-avatar{width:52px;height:52px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:17px;color:#FFF;letter-spacing:0.5px}
+.contact-status-dot{position:absolute;bottom:-2px;right:-2px;width:14px;height:14px;border-radius:50%;border:2.5px solid #FFF}
+.contact-status-dot.online{background:#10B981;box-shadow:0 0 0 2px rgba(16,185,129,0.3)}
+.contact-status-dot.away{background:#F59E0B}
+.contact-status-dot.on_leave{background:#8B5CF6}
+.contact-status-dot.offline{background:#94A3B8}
+
+.presence-badge{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;padding:3px 10px;border-radius:999px}
+.presence-badge.online{background:#ECFDF5;color:#047857}
+.presence-badge.away{background:#FFFBEB;color:#B45309}
+.presence-badge.on_leave{background:#F5F3FF;color:#6D28D9}
+.presence-badge.offline{background:#F1F5F9;color:#64748B}
+
+.dept-pill{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;text-transform:uppercase;letter-spacing:0.3px}
+.dept-pill.sales{background:#FFEDD5;color:#C2410C}
+.dept-pill.operations{background:#DBEAFE;color:#1E40AF}
+.dept-pill.accounts{background:#D1FAE5;color:#065F46}
+.dept-pill.digital{background:#EDE9FE;color:#5B21B6}
+.dept-pill.service{background:#CFFAFE;color:#0E7490}
+.dept-pill.support{background:#E0E7FF;color:#3730A3}
+.dept-pill.general{background:#F1F5F9;color:#475569}
+
+.contact-action-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:7px 12px;border-radius:8px;font-size:12.5px;font-weight:600;border:1px solid var(--border);background:#FFF;color:var(--text);cursor:pointer;transition:all 0.15s;text-decoration:none}
+.contact-action-btn:hover{background:#F8FAFC;border-color:#94A3B8}
+.contact-action-btn.primary{background:var(--cyan);color:#FFF;border-color:var(--cyan);font-weight:700}
+.contact-action-btn.primary:hover{background:var(--cyan-dark)}
 </style>
 </head>
 <body>
@@ -1344,7 +1375,7 @@ td .t-url{
 
 <div id="toast" class="toast" role="status"></div>
 
-<script src="/tasks-app.js?v=20261113_05"></script>
+<script src="/tasks-app.js?v=20261113_06"></script>
 <script>
 /* =====================================================================
    MYPRENEUR CONNECT — CONFIGURATION
@@ -1370,7 +1401,7 @@ const CATEGORIES = ["Policies","Sales Team","Operations Team","HR Team","Digital
 const MENU = [
   { id:"dashboard",        label:"Dashboard",        icon:"grid" },
   { id:"tasks",            label:"Task Manager",     icon:"clipboard" },
-  { id:"employee_contact", label:"Employee Contact", icon:"users",    external: EMPLOYEE_CONTACT_URL },
+  { id:"employee_contact", label:"Employee Contacts", icon:"users" },
   { id:"eoq",              label:"Employee of the Quarter", icon:"trophy" },
   { id:"announcements",    label:"Announcements",    icon:"megaphone" },
   { id:"policies",      label:"Policies",         icon:"shield",   category:"Policies" },
@@ -1549,7 +1580,7 @@ const canUseLinkTools    = () => editableCategories().length > 0;
 /* Can this user open this route at all? */
 function canSeeRoute(r){
   if (!session) return false;
-  if (r === "dashboard" || r === "tasks" || r === "events" || r === "announcements" || r === "growth" || r === "eoq") return true;
+  if (r === "dashboard" || r === "tasks" || r === "events" || r === "announcements" || r === "growth" || r === "eoq" || r === "employee_contact") return true;
   if (ROUTE_CATEGORY[r]) return canSeeCategory(ROUTE_CATEGORY[r]);
   if (r === "manage") return isAdmin();          // Manage All Links: admin only
   if (r === "add") return canUseLinkTools();
@@ -1763,7 +1794,7 @@ function render(){
      sent back to the dashboard. location.replace() is used instead of setting
      location.hash so the blocked address does NOT become a history entry —
      otherwise the browser Back button gets stuck bouncing on the dashboard. */
-  const known = ['dashboard','tasks','events','announcements','manage','add','growth','eoq'].includes(route) || !!ROUTE_CATEGORY[route];
+  const known = ['dashboard','tasks','events','announcements','manage','add','growth','eoq','employee_contact'].includes(route) || !!ROUTE_CATEGORY[route];
   if (route !== 'dashboard' && (!known || !canSeeRoute(route))){
     toast(known ? 'You do not have access to that section' : 'That page does not exist');
     goReplace('dashboard');
@@ -1786,6 +1817,7 @@ function render(){
     view.innerHTML = viewEoq();
     loadEoqData(eoqSelectedYear).then(() => { if (currentRoute() === 'eoq') view.innerHTML = viewEoq(); });
   }
+  else if (route === 'employee_contact') view.innerHTML = viewEmployeeContacts();
   else if (ROUTE_CATEGORY[route]) view.innerHTML = viewCategory(ROUTE_CATEGORY[route]);
   else { goReplace('dashboard'); return; }
   renderSidebar();
@@ -1800,6 +1832,7 @@ function render(){
     : route === 'announcements' ? 'Announcements'
     : route === 'growth' ? 'Growth Corner'
     : route === 'eoq' ? 'Employee of the Quarter'
+    : route === 'employee_contact' ? 'Employee Contacts'
     : (ROUTE_CATEGORY[route] || 'Portal');
   document.title = label + ' — Mypreneur Connect';
   window.scrollTo({ top: 0 });
@@ -2866,6 +2899,631 @@ function afterRender(route){
         renderNotifications();
       }).catch(() => {});
     }
+  }
+  if (route === 'employee_contact'){
+    initEmployeeContactsView();
+  }
+}
+
+/* ============ EMPLOYEE CONTACTS & DIRECTORY ============ */
+let contactsState = {
+  loading: false,
+  contacts: [],
+  departments: ['All'],
+  stats: { total: 0, online: 0, away: 0, on_leave: 0, offline: 0 },
+  search: '',
+  departmentFilter: 'All',
+  statusFilter: 'all',
+  viewMode: 'grid',
+  selectedEmployee: null,
+  activeChatTab: 'link',
+  chatMessages: [],
+  loadingChat: false
+};
+
+// Background Presence Heartbeat (45s)
+setInterval(() => {
+  if (isAuthed()) {
+    apiRequest('/api/presence/heartbeat', { method: 'POST' }).catch(() => {});
+    if (currentRoute() === 'employee_contact') {
+      loadContactsData(true);
+    }
+  }
+}, 45000);
+
+async function loadContactsData(silent = false) {
+  if (!silent) {
+    contactsState.loading = true;
+    renderContactsContent();
+  }
+  try {
+    const res = await apiRequest('/api/contacts');
+    contactsState.contacts = res.contacts || [];
+    contactsState.departments = res.departments || ['All'];
+    contactsState.stats = res.stats || { total: 0, online: 0, away: 0, on_leave: 0, offline: 0 };
+    updateContactsStatsUI();
+  } catch (err) {
+    console.error('Error fetching employee contacts:', err);
+    if (!silent) toast('Failed to load employee contacts');
+  } finally {
+    contactsState.loading = false;
+    renderContactsContent();
+  }
+}
+
+function updateContactsStatsUI() {
+  const elTotal = $('#cntStatTotal');
+  const elOnline = $('#cntStatOnline');
+  const elAway = $('#cntStatAway');
+  const elLeave = $('#cntStatLeave');
+  if (elTotal) elTotal.textContent = contactsState.stats.total || '0';
+  if (elOnline) elOnline.textContent = contactsState.stats.online || '0';
+  if (elAway) elAway.textContent = contactsState.stats.away || '0';
+  if (elLeave) elLeave.textContent = contactsState.stats.on_leave || '0';
+}
+
+function initEmployeeContactsView() {
+  loadContactsData(false);
+}
+
+function handleContactSearch(val) {
+  contactsState.search = val || '';
+  renderContactsContent();
+}
+
+function handleContactDeptFilter(val) {
+  contactsState.departmentFilter = val || 'All';
+  renderContactsContent();
+}
+
+function handleContactStatusFilter(val) {
+  contactsState.statusFilter = val || 'all';
+  renderContactsContent();
+}
+
+function setContactViewMode(mode) {
+  contactsState.viewMode = mode;
+  render();
+}
+
+function copyContactText(txt, label) {
+  if (!txt) return;
+  navigator.clipboard.writeText(txt).then(() => {
+    toast(`✓ ${label || 'Details'} copied!`);
+  }).catch(() => {
+    toast(`Copied: ${txt}`);
+  });
+}
+
+function getDeptPillClass(dept) {
+  const d = String(dept || '').toLowerCase();
+  if (d.includes('sale')) return 'sales';
+  if (d.includes('op')) return 'operations';
+  if (d.includes('acc') || d.includes('hr')) return 'accounts';
+  if (d.includes('digit')) return 'digital';
+  if (d.includes('serv')) return 'service';
+  if (d.includes('supp')) return 'support';
+  return 'general';
+}
+
+function getAvatarBg(name) {
+  const colors = [
+    'linear-gradient(135deg, #0284C7, #0369A1)',
+    'linear-gradient(135deg, #F97316, #EA580C)',
+    'linear-gradient(135deg, #10B981, #059669)',
+    'linear-gradient(135deg, #8B5CF6, #7C3AED)',
+    'linear-gradient(135deg, #EC4899, #DB2777)',
+    'linear-gradient(135deg, #6366F1, #4F46E5)',
+    'linear-gradient(135deg, #14B8A6, #0D9488)'
+  ];
+  let hash = 0;
+  for (let i = 0; i < (name || '').length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return colors[Math.abs(hash) % colors.length];
+}
+
+function getInitials(name) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return 'MP';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function viewEmployeeContacts() {
+  return `
+    <div style="display:flex;flex-direction:column;gap:18px;">
+      <!-- Header -->
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;">
+        <div class="page-head" style="margin-bottom:0;">
+          <div class="page-icon" style="background:linear-gradient(135deg, var(--cyan), var(--cyan-dark));">
+            ${ic('users', 'width:24px;height:24px;color:#fff')}
+          </div>
+          <div>
+            <h2>Employee Contacts &amp; Directory</h2>
+            <p>Search active team members, view live presence, share links and collaborate.</p>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <button class="btn btn-ghost" onclick="loadContactsData(false)" style="display:inline-flex;align-items:center;gap:6px;font-weight:600;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      <!-- Stats Ribbon -->
+      <div id="contactsStatsRibbon" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:12px;">
+        <div class="card" style="padding:14px 18px;display:flex;align-items:center;gap:14px;background:#FFF;border-radius:14px;">
+          <div style="width:42px;height:42px;border-radius:10px;background:#F1F5F9;display:flex;align-items:center;justify-content:center;color:var(--navy);font-size:20px;">👥</div>
+          <div>
+            <span style="font-size:12px;color:var(--muted);text-transform:uppercase;font-weight:700;">Total Active</span>
+            <div style="font-size:20px;font-weight:800;color:var(--navy);line-height:1.2;" id="cntStatTotal">${contactsState.stats.total || '—'}</div>
+          </div>
+        </div>
+        <div class="card" style="padding:14px 18px;display:flex;align-items:center;gap:14px;background:#FFF;border-radius:14px;">
+          <div style="width:42px;height:42px;border-radius:10px;background:#ECFDF5;display:flex;align-items:center;justify-content:center;color:#059669;font-size:20px;">🟢</div>
+          <div>
+            <span style="font-size:12px;color:var(--muted);text-transform:uppercase;font-weight:700;">Online Now</span>
+            <div style="font-size:20px;font-weight:800;color:#047857;line-height:1.2;" id="cntStatOnline">${contactsState.stats.online || '—'}</div>
+          </div>
+        </div>
+        <div class="card" style="padding:14px 18px;display:flex;align-items:center;gap:14px;background:#FFF;border-radius:14px;">
+          <div style="width:42px;height:42px;border-radius:10px;background:#FFFBEB;display:flex;align-items:center;justify-content:center;color:#D97706;font-size:20px;">🟡</div>
+          <div>
+            <span style="font-size:12px;color:var(--muted);text-transform:uppercase;font-weight:700;">Away / Idle</span>
+            <div style="font-size:20px;font-weight:800;color:#B45309;line-height:1.2;" id="cntStatAway">${contactsState.stats.away || '—'}</div>
+          </div>
+        </div>
+        <div class="card" style="padding:14px 18px;display:flex;align-items:center;gap:14px;background:#FFF;border-radius:14px;">
+          <div style="width:42px;height:42px;border-radius:10px;background:#F5F3FF;display:flex;align-items:center;justify-content:center;color:#7C3AED;font-size:20px;">🟣</div>
+          <div>
+            <span style="font-size:12px;color:var(--muted);text-transform:uppercase;font-weight:700;">On Leave</span>
+            <div style="font-size:20px;font-weight:800;color:#6D28D9;line-height:1.2;" id="cntStatLeave">${contactsState.stats.on_leave || '—'}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Filter & Search Toolbar -->
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;background:#FFF;padding:14px 18px;border-radius:14px;border:1px solid var(--border);">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;flex:1;">
+          <div style="position:relative;min-width:240px;flex:1;max-width:340px;">
+            <input type="text" id="contactSearchInput" placeholder="Search by name, code, title, phone..." value="${esc(contactsState.search)}" oninput="handleContactSearch(this.value)" style="width:100%;padding:8px 12px 8px 34px;border:1px solid var(--border);border-radius:8px;font-size:13.5px;">
+            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted);">${ic('search','width:16px;height:16px')}</span>
+          </div>
+
+          <!-- Department Filter -->
+          <select id="contactDeptSelect" onchange="handleContactDeptFilter(this.value)" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;background:#FFF;color:var(--navy);">
+            <option value="All" ${contactsState.departmentFilter === 'All' ? 'selected' : ''}>🏢 All Departments</option>
+            ${contactsState.departments.filter(d => d !== 'All').map(d => `
+              <option value="${esc(d)}" ${contactsState.departmentFilter === d ? 'selected' : ''}>${esc(d)}</option>
+            `).join('')}
+          </select>
+
+          <!-- Status Filter -->
+          <select id="contactStatusSelect" onchange="handleContactStatusFilter(this.value)" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;background:#FFF;color:var(--navy);">
+            <option value="all" ${contactsState.statusFilter === 'all' ? 'selected' : ''}>⚡ All Statuses</option>
+            <option value="ONLINE" ${contactsState.statusFilter === 'ONLINE' ? 'selected' : ''}>🟢 Online</option>
+            <option value="AWAY" ${contactsState.statusFilter === 'AWAY' ? 'selected' : ''}>🟡 Away</option>
+            <option value="ON_LEAVE" ${contactsState.statusFilter === 'ON_LEAVE' ? 'selected' : ''}>🟣 On Leave</option>
+            <option value="OFFLINE" ${contactsState.statusFilter === 'OFFLINE' ? 'selected' : ''}>⚪ Offline</option>
+          </select>
+        </div>
+
+        <!-- View Mode Switcher -->
+        <div style="display:flex;align-items:center;gap:4px;border:1px solid var(--border);border-radius:8px;padding:3px;background:#F8FAFC;">
+          <button class="btn btn-sm ${contactsState.viewMode === 'grid' ? 'btn-primary' : 'btn-ghost'}" onclick="setContactViewMode('grid')" style="padding:4px 10px;border-radius:6px;font-size:12.5px;font-weight:700;">
+            ⊞ Grid
+          </button>
+          <button class="btn btn-sm ${contactsState.viewMode === 'table' ? 'btn-primary' : 'btn-ghost'}" onclick="setContactViewMode('table')" style="padding:4px 10px;border-radius:6px;font-size:12.5px;font-weight:700;">
+            ☰ Directory
+          </button>
+        </div>
+      </div>
+
+      <!-- Main Directory Content Container -->
+      <div id="contactsListContainer">
+        <!-- populated by renderContactsContent() -->
+      </div>
+
+      <!-- Chat / Link Share Modal Anchor -->
+      <div id="contactChatModalAnchor"></div>
+    </div>
+  `;
+}
+
+function renderContactsContent() {
+  const container = $('#contactsListContainer');
+  if (!container) return;
+
+  if (contactsState.loading && contactsState.contacts.length === 0) {
+    container.innerHTML = `
+      <div style="padding:60px 20px;text-align:center;color:var(--muted);background:#FFF;border-radius:16px;border:1px solid var(--border);">
+        <div style="font-size:24px;margin-bottom:8px;">⏳</div>
+        <p style="font-weight:600;font-size:14px;">Loading active employee directory &amp; live presence...</p>
+      </div>
+    `;
+    return;
+  }
+
+  // Filter
+  let list = contactsState.contacts;
+  if (contactsState.departmentFilter !== 'All') {
+    list = list.filter(c => c.department === contactsState.departmentFilter);
+  }
+  if (contactsState.statusFilter !== 'all') {
+    list = list.filter(c => c.status === contactsState.statusFilter);
+  }
+  if (contactsState.search.trim()) {
+    const q = contactsState.search.trim().toLowerCase();
+    list = list.filter(c =>
+      c.name.toLowerCase().includes(q) ||
+      (c.employee_code && c.employee_code.toLowerCase().includes(q)) ||
+      (c.department && c.department.toLowerCase().includes(q)) ||
+      (c.designation && c.designation.toLowerCase().includes(q)) ||
+      (c.email && c.email.toLowerCase().includes(q)) ||
+      (c.phone && c.phone.includes(q))
+    );
+  }
+
+  if (list.length === 0) {
+    container.innerHTML = `
+      <div style="padding:50px 20px;text-align:center;color:var(--muted);background:#FFF;border-radius:16px;border:1px solid var(--border);">
+        <div style="font-size:32px;margin-bottom:8px;">🔍</div>
+        <strong style="font-size:15px;color:var(--navy);">No employees found</strong>
+        <p style="font-size:13px;margin-top:4px;">No active staff matched your search or department filter.</p>
+        <button class="btn btn-sm btn-ghost" onclick="contactsState.search=''; contactsState.departmentFilter='All'; contactsState.statusFilter='all'; render();" style="margin-top:10px;">
+          Clear Filters
+        </button>
+      </div>
+    `;
+    return;
+  }
+
+  if (contactsState.viewMode === 'table') {
+    container.innerHTML = `
+      <div style="background:#FFF;border-radius:16px;border:1px solid var(--border);overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.02);">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead>
+            <tr style="background:#F8FAFC;border-bottom:1px solid var(--border);text-align:left;">
+              <th style="padding:12px 18px;font-weight:700;color:var(--navy);">Employee</th>
+              <th style="padding:12px 14px;font-weight:700;color:var(--navy);">Department</th>
+              <th style="padding:12px 14px;font-weight:700;color:var(--navy);">Designation</th>
+              <th style="padding:12px 14px;font-weight:700;color:var(--navy);">Presence</th>
+              <th style="padding:12px 14px;font-weight:700;color:var(--navy);">Contact</th>
+              <th style="padding:12px 18px;font-weight:700;color:var(--navy);text-align:right;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${list.map(c => `
+              <tr style="border-bottom:1px solid #F1F5F9;transition:background 0.1s;" onmouseover="this.style.background='#F8FAFC'" onmouseout="this.style.background=''">
+                <td style="padding:12px 18px;">
+                  <div style="display:flex;align-items:center;gap:12px;">
+                    <div style="width:36px;height:36px;border-radius:10px;background:${getAvatarBg(c.name)};display:flex;align-items:center;justify-content:center;color:#FFF;font-weight:700;font-size:13px;flex-shrink:0;">
+                      ${getInitials(c.name)}
+                    </div>
+                    <div>
+                      <strong style="color:var(--navy);font-size:13.5px;display:block;">${esc(c.name)}</strong>
+                      <span style="font-size:11px;color:var(--muted);">${esc(c.employee_code)}</span>
+                    </div>
+                  </div>
+                </td>
+                <td style="padding:12px 14px;">
+                  <span class="dept-pill ${getDeptPillClass(c.department)}">${esc(c.department)}</span>
+                </td>
+                <td style="padding:12px 14px;color:var(--text);font-weight:500;">
+                  ${esc(c.designation)}
+                </td>
+                <td style="padding:12px 14px;">
+                  <span class="presence-badge ${c.status.toLowerCase()}" title="${esc(c.status_note)}">
+                    ● ${esc(c.status_label)}
+                  </span>
+                </td>
+                <td style="padding:12px 14px;">
+                  <div style="display:flex;flex-direction:column;gap:2px;">
+                    ${c.email ? `<a href="mailto:${esc(c.email)}" style="color:#0284C7;text-decoration:none;font-size:12px;" title="Send Email">${esc(c.email)}</a>` : ''}
+                    ${c.phone ? `<a href="tel:${esc(c.phone)}" style="color:var(--text);text-decoration:none;font-size:12px;" title="Call Phone">📞 ${esc(c.phone)}</a>` : ''}
+                  </div>
+                </td>
+                <td style="padding:12px 18px;text-align:right;">
+                  <button class="contact-action-btn primary" onclick="openContactChatModal(${c.id})">
+                    💬 Connect / Share
+                  </button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+    return;
+  }
+
+  // Grid Mode
+  container.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(310px, 1fr));gap:16px;">
+      ${list.map(c => `
+        <div class="contact-card">
+          <!-- Top Row: Avatar + Presence Dot + Name + Code -->
+          <div style="display:flex;align-items:flex-start;gap:14px;">
+            <div class="contact-avatar-wrap">
+              <div class="contact-avatar" style="background:${getAvatarBg(c.name)};">
+                ${getInitials(c.name)}
+              </div>
+              <span class="contact-status-dot ${c.status.toLowerCase()}" title="${esc(c.status_label)}: ${esc(c.status_note)}"></span>
+            </div>
+
+            <div style="flex:1;min-width:0;">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;">
+                <h4 style="font-size:15px;font-weight:800;color:var(--navy);margin:0;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                  ${esc(c.name)}
+                </h4>
+                <span style="font-size:11px;font-weight:700;color:var(--muted);background:#F1F5F9;padding:2px 6px;border-radius:4px;">
+                  ${esc(c.employee_code)}
+                </span>
+              </div>
+              <div style="font-size:12.5px;color:var(--muted);margin-top:2px;font-weight:500;">
+                ${esc(c.designation)}
+              </div>
+              <div style="margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                <span class="dept-pill ${getDeptPillClass(c.department)}">${esc(c.department)}</span>
+                <span class="presence-badge ${c.status.toLowerCase()}" title="${esc(c.status_note)}">
+                  ● ${esc(c.status_label)}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Status note if available -->
+          ${c.status_note ? `
+            <div style="font-size:11.5px;color:var(--muted);background:#F8FAFC;border-radius:8px;padding:6px 10px;display:flex;align-items:center;gap:6px;">
+              <span>ℹ️</span> <span>${esc(c.status_note)}</span>
+            </div>
+          ` : ''}
+
+          <!-- Contact details block -->
+          <div style="display:flex;flex-direction:column;gap:6px;padding:8px 10px;background:#F8FAFC;border-radius:10px;font-size:12.5px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <span style="display:flex;align-items:center;gap:6px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                ✉️ <a href="mailto:${esc(c.email)}" style="color:#0284C7;text-decoration:none;">${esc(c.email || 'No email')}</a>
+              </span>
+              ${c.email ? `<button onclick="copyContactText('${esc(c.email)}', 'Email')" class="btn btn-ghost" style="padding:2px 6px;font-size:11px;">Copy</button>` : ''}
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <span style="display:flex;align-items:center;gap:6px;color:var(--muted);">
+                📞 <a href="tel:${esc(c.phone)}" style="color:var(--text);text-decoration:none;font-weight:600;">${esc(c.phone || 'No phone')}</a>
+              </span>
+              <div style="display:flex;align-items:center;gap:4px;">
+                ${c.phone ? `
+                  <a href="https://wa.me/91${esc(c.phone.replace(/[^0-9]/g, ''))}" target="_blank" rel="noopener" class="btn btn-ghost" style="padding:2px 6px;font-size:11px;color:#15803D;" title="WhatsApp">WA</a>
+                  <button onclick="copyContactText('${esc(c.phone)}', 'Phone')" class="btn btn-ghost" style="padding:2px 6px;font-size:11px;">Copy</button>
+                ` : ''}
+              </div>
+            </div>
+          </div>
+
+          <!-- Actions Footer -->
+          <div style="display:flex;align-items:center;gap:8px;margin-top:auto;">
+            <button class="contact-action-btn primary" onclick="openContactChatModal(${c.id})" style="flex:1;">
+              💬 Connect / Share Link
+            </button>
+            ${c.booking_link ? `
+              <a href="${esc(c.booking_link)}" target="_blank" rel="noopener" class="contact-action-btn" title="Book a Meeting">
+                📅
+              </a>
+            ` : ''}
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+async function openContactChatModal(empId) {
+  const emp = contactsState.contacts.find(c => c.id === empId);
+  if (!emp) return;
+  contactsState.selectedEmployee = emp;
+  contactsState.activeChatTab = 'link';
+  contactsState.chatMessages = [];
+  contactsState.loadingChat = true;
+
+  const anchor = $('#contactChatModalAnchor');
+  if (!anchor) return;
+
+  anchor.innerHTML = `
+    <div class="dup-modal-overlay" id="contactChatModalBox" onclick="if(event.target===this)closeContactChatModal();">
+      <div class="dup-modal-box" style="max-width:620px;">
+        <div class="dup-modal-head">
+          <div style="display:flex;align-items:center;gap:12px;">
+            <div style="width:40px;height:40px;border-radius:10px;background:${getAvatarBg(emp.name)};display:flex;align-items:center;justify-content:center;color:#FFF;font-weight:700;font-size:14px;">
+              ${getInitials(emp.name)}
+            </div>
+            <div>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <strong style="font-size:16px;color:var(--navy);">${esc(emp.name)}</strong>
+                <span class="presence-badge ${emp.status.toLowerCase()}">● ${esc(emp.status_label)}</span>
+              </div>
+              <span style="font-size:12px;color:var(--muted);">${esc(emp.department)} · ${esc(emp.designation)}</span>
+            </div>
+          </div>
+          <button class="btn" onclick="closeContactChatModal()" style="font-size:22px;color:var(--muted);line-height:1;">&times;</button>
+        </div>
+
+        <div class="dup-modal-body" style="gap:16px;">
+          <!-- Collaboration Intro Banner -->
+          <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:12px;padding:12px 14px;display:flex;align-items:center;gap:10px;">
+            <span style="font-size:20px;">🚀</span>
+            <div style="font-size:12.5px;color:#166534;">
+              <strong>Direct Collaboration &amp; Link Sharing:</strong> Share task links, spreadsheets, client records, or quick notes directly with ${esc(emp.name.split(' ')[0])}.
+            </div>
+          </div>
+
+          <!-- Tab Switcher -->
+          <div style="display:flex;gap:8px;border-bottom:1px solid var(--border);padding-bottom:10px;">
+            <button class="btn btn-sm ${contactsState.activeChatTab === 'link' ? 'btn-primary' : 'btn-ghost'}" id="btnChatTabLink" onclick="switchChatTab('link')" style="font-weight:700;">
+              🔗 Share a Link
+            </button>
+            <button class="btn btn-sm ${contactsState.activeChatTab === 'message' ? 'btn-primary' : 'btn-ghost'}" id="btnChatTabMsg" onclick="switchChatTab('message')" style="font-weight:700;">
+              💬 Direct Note / Message
+            </button>
+          </div>
+
+          <!-- Share Link Form -->
+          <div id="chatPaneLink" style="display:${contactsState.activeChatTab === 'link' ? 'flex' : 'none'};flex-direction:column;gap:12px;">
+            <div>
+              <label style="font-size:12px;font-weight:700;color:var(--navy);text-transform:uppercase;">Link Title / Name *</label>
+              <input type="text" id="shareLinkTitle" placeholder="e.g. Lead Pipeline Sheet, Event Presentation Deck" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13.5px;margin-top:4px;">
+            </div>
+            <div>
+              <label style="font-size:12px;font-weight:700;color:var(--navy);text-transform:uppercase;">URL / Web Address *</label>
+              <input type="url" id="shareLinkUrl" placeholder="https://..." style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13.5px;margin-top:4px;">
+            </div>
+            <div>
+              <label style="font-size:12px;font-weight:700;color:var(--navy);text-transform:uppercase;">Note for ${esc(emp.name.split(' ')[0])} (Optional)</label>
+              <textarea id="shareLinkNote" rows="2" placeholder="e.g. Please check row 32 for today's followups" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;margin-top:4px;resize:vertical;"></textarea>
+            </div>
+            <button class="btn btn-primary" onclick="submitContactShare('link')" style="background:var(--cyan);font-weight:700;padding:10px;">
+              🚀 Share Link with ${esc(emp.name.split(' ')[0])}
+            </button>
+          </div>
+
+          <!-- Direct Message Form -->
+          <div id="chatPaneMsg" style="display:${contactsState.activeChatTab === 'message' ? 'flex' : 'none'};flex-direction:column;gap:12px;">
+            <div>
+              <label style="font-size:12px;font-weight:700;color:var(--navy);text-transform:uppercase;">Message *</label>
+              <textarea id="shareDirectMessage" rows="4" placeholder="Write a quick message or update for ${esc(emp.name)}..." style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:13.5px;margin-top:4px;resize:vertical;"></textarea>
+            </div>
+            <button class="btn btn-primary" onclick="submitContactShare('message')" style="background:var(--cyan);font-weight:700;padding:10px;">
+              ✉️ Send Direct Note
+            </button>
+          </div>
+
+          <!-- Quick Connect Shortcuts Bar -->
+          <div style="background:#F8FAFC;border-radius:10px;padding:10px 14px;border:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+            <span style="font-size:12px;color:var(--muted);font-weight:600;">Direct Channels:</span>
+            <div style="display:flex;gap:6px;">
+              ${emp.phone ? `<a href="https://wa.me/91${esc(emp.phone.replace(/[^0-9]/g, ''))}" target="_blank" rel="noopener" class="btn btn-sm btn-ghost" style="color:#15803D;font-weight:700;">🟢 WhatsApp</a>` : ''}
+              ${emp.email ? `<a href="mailto:${esc(emp.email)}" class="btn btn-sm btn-ghost" style="color:#0284C7;font-weight:700;">✉️ Email</a>` : ''}
+              ${emp.phone ? `<a href="tel:${esc(emp.phone)}" class="btn btn-sm btn-ghost" style="color:var(--navy);font-weight:700;">📞 Call</a>` : ''}
+            </div>
+          </div>
+
+          <!-- Conversation / Shared History Container -->
+          <div>
+            <span style="font-size:12px;font-weight:700;color:var(--navy);text-transform:uppercase;">Shared History with ${esc(emp.name.split(' ')[0])}</span>
+            <div id="chatHistoryBox" style="margin-top:6px;max-height:180px;overflow-y:auto;background:#FFF;border:1px solid var(--border);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;">
+              <div style="font-size:12px;color:var(--muted);text-align:center;padding:12px;">Loading history...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  loadContactChatHistory(empId);
+}
+
+function closeContactChatModal() {
+  const box = $('#contactChatModalBox');
+  if (box) box.remove();
+}
+
+function switchChatTab(tab) {
+  contactsState.activeChatTab = tab;
+  const pLink = $('#chatPaneLink');
+  const pMsg = $('#chatPaneMsg');
+  const bLink = $('#btnChatTabLink');
+  const bMsg = $('#btnChatTabMsg');
+  if (pLink) pLink.style.display = tab === 'link' ? 'flex' : 'none';
+  if (pMsg) pMsg.style.display = tab === 'message' ? 'flex' : 'none';
+  if (bLink) {
+    bLink.className = `btn btn-sm ${tab === 'link' ? 'btn-primary' : 'btn-ghost'}`;
+  }
+  if (bMsg) {
+    bMsg.className = `btn btn-sm ${tab === 'message' ? 'btn-primary' : 'btn-ghost'}`;
+  }
+}
+
+async function loadContactChatHistory(empId) {
+  const box = $('#chatHistoryBox');
+  if (!box) return;
+  try {
+    const res = await apiRequest(`/api/contacts/messages?employee_id=${empId}`);
+    const messages = res.messages || [];
+    contactsState.chatMessages = messages;
+    if (messages.length === 0) {
+      box.innerHTML = `<div style="font-size:12px;color:var(--muted);text-align:center;padding:12px;">No shared items yet. Share your first link or message above!</div>`;
+      return;
+    }
+    box.innerHTML = messages.map(m => {
+      const isMine = m.from_user_id === (session ? session.id : 0);
+      const isLink = m.message_type === 'link';
+      return `
+        <div style="padding:8px 10px;border-radius:8px;background:${isMine ? '#F0F9FF' : '#F8FAFC'};border:1px solid ${isMine ? '#BAE6FD' : '#E2E8F0'};font-size:12.5px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+            <strong style="color:${isMine ? '#0369A1' : 'var(--navy)'};font-size:11.5px;">${isMine ? 'You' : (m.from_username || 'Teammate')}</strong>
+            <span style="font-size:10.5px;color:var(--muted);">${fmtDate(m.created_at)}</span>
+          </div>
+          ${isLink && m.link_url ? `
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span>🔗</span>
+              <a href="${esc(m.link_url)}" target="_blank" rel="noopener" style="color:#0284C7;font-weight:700;text-decoration:underline;">
+                ${esc(m.link_title || m.link_url)}
+              </a>
+            </div>
+            ${m.content && m.content !== m.link_title ? `<div style="font-size:12px;color:var(--text);margin-top:2px;">${esc(m.content)}</div>` : ''}
+          ` : `
+            <div style="color:var(--text);white-space:pre-wrap;">${esc(m.content)}</div>
+          `}
+        </div>
+      `;
+    }).join('');
+    box.scrollTop = box.scrollHeight;
+  } catch (e) {
+    box.innerHTML = `<div style="font-size:12px;color:var(--muted);text-align:center;padding:8px;">Ready for communication.</div>`;
+  }
+}
+
+async function submitContactShare(type) {
+  const emp = contactsState.selectedEmployee;
+  if (!emp) return;
+
+  let payload = {
+    to_employee_id: emp.id,
+    message_type: type
+  };
+
+  if (type === 'link') {
+    const title = $('#shareLinkTitle')?.value.trim();
+    const url = $('#shareLinkUrl')?.value.trim();
+    const note = $('#shareLinkNote')?.value.trim();
+    if (!url) {
+      toast('Please enter the URL to share');
+      return;
+    }
+    payload.link_title = title || url;
+    payload.link_url = url.startsWith('http') ? url : `https://${url}`;
+    payload.content = note || title || url;
+  } else {
+    const msg = $('#shareDirectMessage')?.value.trim();
+    if (!msg) {
+      toast('Please write a message to send');
+      return;
+    }
+    payload.content = msg;
+  }
+
+  try {
+    await apiRequest('/api/contacts/share', { method: 'POST', body: payload });
+    toast(`✓ Successfully sent to ${emp.name}!`);
+    if (type === 'link') {
+      if ($('#shareLinkTitle')) $('#shareLinkTitle').value = '';
+      if ($('#shareLinkUrl')) $('#shareLinkUrl').value = '';
+      if ($('#shareLinkNote')) $('#shareLinkNote').value = '';
+    } else {
+      if ($('#shareDirectMessage')) $('#shareDirectMessage').value = '';
+    }
+    loadContactChatHistory(emp.id);
+  } catch (e) {
+    toast(`Failed to send: ${e.message || 'Server error'}`);
   }
 }
 

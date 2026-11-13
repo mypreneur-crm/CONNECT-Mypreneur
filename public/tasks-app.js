@@ -27,6 +27,7 @@
     statusFilter: 'all',
     priorityFilter: 'all',
     assigneeFilter: 'all',
+    dueDateFilter: 'all',
     filteredEmployeeCapacity: null,
     filteredEmployeeCrmWorkload: null,
     adminSelectedEmployeeId: 'self',
@@ -75,17 +76,123 @@
 
   function getDaysPending(dueDateStr) {
     if (!dueDateStr) return 0;
-    const due = new Date(dueDateStr);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    due.setHours(0, 0, 0, 0);
+    const dueStr = String(dueDateStr).split('T')[0];
+    const todayStr = new Date().toISOString().split('T')[0];
+    const due = new Date(dueStr + 'T00:00:00');
+    const today = new Date(todayStr + 'T00:00:00');
     const diff = Math.floor((today - due) / (1000 * 60 * 60 * 24));
+    // Overdue is strictly if due date is in the past (diff > 0)
     return Math.max(0, diff);
+  }
+
+  function getDueStatus(dueDateStr, status) {
+    if (!dueDateStr || status === 'COMPLETED' || status === 'CANCELLED') {
+      return { isOverdue: false, isDueToday: false, isDueSoon: false, diffDays: 0, overdueDays: 0, badgeHtml: '' };
+    }
+    const dueStr = String(dueDateStr).split('T')[0];
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    const todayDate = new Date(todayStr + 'T00:00:00');
+    const dueDate = new Date(dueStr + 'T00:00:00');
+    const diffDays = Math.round((dueDate.getTime() - todayDate.getTime()) / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 0) {
+      // Past deadline -> STRICTLY OVERDUE
+      const overdueDays = Math.abs(diffDays);
+      return {
+        isOverdue: true,
+        isDueToday: false,
+        isDueSoon: false,
+        diffDays,
+        overdueDays,
+        label: `Overdue by ${overdueDays}d`,
+        badgeHtml: `<span class="badge-overdue-alert" title="Due date was ${dueStr}">🚨 Overdue (${overdueDays}d)</span>`
+      };
+    } else if (diffDays === 0) {
+      // Due today -> NOT OVERDUE! Can complete until end of today
+      return {
+        isOverdue: false,
+        isDueToday: true,
+        isDueSoon: true,
+        diffDays: 0,
+        overdueDays: 0,
+        label: 'Due Today',
+        badgeHtml: `<span class="badge-due-today" style="font-size:11px;background:#FEF3C7;color:#B45309;padding:2px 8px;border-radius:6px;font-weight:700;display:inline-flex;align-items:center;gap:4px;" title="Complete by end of today">⏰ Due Today</span>`
+      };
+    } else if (diffDays <= 3) {
+      // Approaching deadline
+      return {
+        isOverdue: false,
+        isDueToday: false,
+        isDueSoon: true,
+        diffDays,
+        overdueDays: 0,
+        label: `Due in ${diffDays}d`,
+        badgeHtml: `<span style="font-size:11px;background:#EFF6FF;color:#1D4ED8;padding:2px 8px;border-radius:6px;font-weight:600;display:inline-flex;align-items:center;gap:4px;" title="Approaching deadline">⚠️ Due in ${diffDays}d</span>`
+      };
+    } else {
+      return {
+        isOverdue: false,
+        isDueToday: false,
+        isDueSoon: false,
+        diffDays,
+        overdueDays: 0,
+        label: `Due in ${diffDays}d`,
+        badgeHtml: ''
+      };
+    }
+  }
+
+  function filterByDueDate(t, filterType) {
+    if (!filterType || filterType === 'all') return true;
+    if (!t.due_date) return filterType === 'no_due';
+
+    const dueStr = String(t.due_date).split('T')[0];
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    const todayMs = new Date(todayStr + 'T00:00:00').getTime();
+    const dueMs = new Date(dueStr + 'T00:00:00').getTime();
+    const diffDays = Math.round((dueMs - todayMs) / (1000 * 60 * 60 * 24));
+
+    if (filterType === 'overdue') {
+      // Date crossed (strictly past deadline) and not completed
+      return diffDays < 0 && t.status !== 'COMPLETED';
+    }
+    if (filterType === 'due_today') {
+      // Due date is today
+      return diffDays === 0 && t.status !== 'COMPLETED';
+    }
+    if (filterType === 'due_soon') {
+      // About to end: due today or in the next 3 days
+      return diffDays >= 0 && diffDays <= 3 && t.status !== 'COMPLETED';
+    }
+    if (filterType === 'due_week') {
+      // Due this week: 0 to 7 days
+      return diffDays >= 0 && diffDays <= 7 && t.status !== 'COMPLETED';
+    }
+    if (filterType === 'later') {
+      // Due beyond 7 days
+      return diffDays > 7;
+    }
+    if (filterType === 'no_due') {
+      return !t.due_date;
+    }
+    return true;
   }
 
   function getTeamNameById(id) {
     const map = { 1: 'Sales', 2: 'Operations', 3: 'Accounts & HR', 4: 'Digital', 5: 'Support' };
     return map[id] || 'General';
+  }
+
+  function isExecutive(m) {
+    if (!m) return false;
+    const desig = String(m.designation || '').toUpperCase();
+    const name = String(m.name || '').toUpperCase();
+    const uName = String(m.username || '').toUpperCase();
+    return desig.includes('ADMIN') || desig.includes('CEO') || desig.includes('DIRECTOR') ||
+           name.includes('ADMIN') || name.includes('SUPER ADMIN') || name.includes('SURESH RADHAKRISHNAN') || name.includes('MANOJ KOMBISSAN') ||
+           uName === 'ADMIN' || uName === 'SUPERADMIN' || uName === 'SURESH' || uName === 'MANOJ';
   }
 
   // =========================================================================
@@ -321,7 +428,7 @@
             <option value="self" ${(!tm.adminSelectedEmployeeId || tm.adminSelectedEmployeeId === 'self') ? 'selected' : ''}>
               ⭐ My Own Work Plan (Admin)
             </option>
-            ${tm.teamMembers.map(m => `
+            ${tm.teamMembers.filter(m => !isExecutive(m)).map(m => `
               <option value="${m.employee_id}" ${String(tm.adminSelectedEmployeeId) === String(m.employee_id) ? 'selected' : ''}>
                 👤 ${escHtml(m.name)} (${escHtml(m.department || 'Staff')})
               </option>
@@ -498,8 +605,8 @@
   }
 
   function renderTaskListItem(t) {
-    const isOverdue = t.is_overdue && t.status !== 'COMPLETED';
-    const pendingDays = getDaysPending(t.due_date);
+    const dueStatus = getDueStatus(t.due_date, t.status);
+    const isOverdue = dueStatus.isOverdue;
     const isTimerRunning = tm.activeTimer && tm.activeTimer.task_id === t.id;
     const isApprovalPending = t.approval_status === 'PENDING';
 
@@ -529,7 +636,7 @@
               <span class="badge-priority ${t.priority.toLowerCase()}">${escHtml(t.priority)}</span>
               ${handoffBadge}
               ${contributorBadge}
-              ${isOverdue ? `<span class="badge-overdue-alert">🚨 Overdue (${pendingDays}d pending)</span>` : ''}
+              ${dueStatus.badgeHtml}
               ${isApprovalPending ? `<span style="font-size:11px;background:#FEF3C7;color:#92400E;padding:2px 7px;border-radius:4px;font-weight:700;">Pending Approval</span>` : ''}
             </div>
             <strong style="font-size:14px;color:var(--navy);">${escHtml(t.title)}</strong>
@@ -539,7 +646,9 @@
         <div style="display:flex;align-items:center;gap:12px;" onclick="event.stopPropagation()">
           <div style="font-size:12.5px;color:var(--muted);text-align:right;">
             <div>${timeDisplay}</div>
-            <div style="font-size:11.5px;">Due: ${t.due_date ? new Date(t.due_date).toLocaleDateString() : 'None'}</div>
+            <div style="font-size:11.5px;color:${dueStatus.isOverdue ? '#EF4444' : (dueStatus.isDueToday ? '#D97706' : 'var(--muted)')};">
+              Due: ${t.due_date ? new Date(t.due_date).toLocaleDateString() : 'None'}
+            </div>
           </div>
 
           <!-- Timer Button -->
@@ -577,6 +686,9 @@
     }
     if (tm.priorityFilter !== 'all') {
       filtered = filtered.filter(t => t.priority === tm.priorityFilter);
+    }
+    if (tm.dueDateFilter && tm.dueDateFilter !== 'all') {
+      filtered = filtered.filter(t => filterByDueDate(t, tm.dueDateFilter));
     }
     if (tm.searchQuery) {
       const q = tm.searchQuery.toLowerCase();
@@ -622,6 +734,17 @@
             <option value="HIGH" ${tm.priorityFilter === 'HIGH' ? 'selected' : ''}>High</option>
             <option value="NORMAL" ${tm.priorityFilter === 'NORMAL' ? 'selected' : ''}>Normal</option>
             <option value="LOW" ${tm.priorityFilter === 'LOW' ? 'selected' : ''}>Low</option>
+          </select>
+
+          <!-- Due Date Filter with clear keywords -->
+          <select onchange="tmSetDueDateFilter(this.value)" style="padding:7px 12px;border:1.5px solid ${tm.dueDateFilter !== 'all' ? '#F59E0B' : 'var(--border)'};border-radius:8px;font-weight:${tm.dueDateFilter !== 'all' ? '700' : '500'};background:${tm.dueDateFilter !== 'all' ? '#FFFBEB' : '#FFF'};color:${tm.dueDateFilter !== 'all' ? '#B45309' : 'inherit'};">
+            <option value="all" ${tm.dueDateFilter === 'all' ? 'selected' : ''}>📅 All Due Dates</option>
+            <option value="overdue" ${tm.dueDateFilter === 'overdue' ? 'selected' : ''}>🚨 Overdue (Date Crossed)</option>
+            <option value="due_today" ${tm.dueDateFilter === 'due_today' ? 'selected' : ''}>⏰ Due Today</option>
+            <option value="due_soon" ${tm.dueDateFilter === 'due_soon' ? 'selected' : ''}>⚠️ Due Soon (Next 3 Days)</option>
+            <option value="due_week" ${tm.dueDateFilter === 'due_week' ? 'selected' : ''}>📅 Due This Week (7 Days)</option>
+            <option value="later" ${tm.dueDateFilter === 'later' ? 'selected' : ''}>⏳ Later (Beyond 7 Days)</option>
+            <option value="no_due" ${tm.dueDateFilter === 'no_due' ? 'selected' : ''}>⚪ No Due Date</option>
           </select>
         </div>
 
@@ -676,8 +799,8 @@
   }
 
   function renderKanbanCard(t) {
-    const isOverdue = t.is_overdue && t.status !== 'COMPLETED';
-    const pendingDays = getDaysPending(t.due_date);
+    const dueStatus = getDueStatus(t.due_date, t.status);
+    const isOverdue = dueStatus.isOverdue;
     const isApprovalPending = t.approval_status === 'PENDING';
 
     const timeDisplay = (t.estimated_minutes && t.estimated_minutes > 0)
@@ -705,8 +828,8 @@
 
       <div class="task-card-title">${escHtml(t.title)}</div>
 
-      ${isOverdue ? `
-        <div><span class="badge-overdue-alert">🚨 Overdue (${pendingDays}d pending)</span></div>
+      ${dueStatus.badgeHtml ? `
+        <div>${dueStatus.badgeHtml}</div>
       ` : ''}
 
       ${isApprovalPending ? `
@@ -725,6 +848,10 @@
 
   window.tmSetBoardSearch = function(val) {
     tm.searchQuery = val;
+    tmRenderTab();
+  };
+  window.tmSetDueDateFilter = function(val) {
+    tm.dueDateFilter = val;
     tmRenderTab();
   };
   window.tmSetTeamFilter = function(val) {
@@ -939,6 +1066,7 @@
 
   window.tmFilterOverdue = function() {
     tmSwitchTab('board');
+    tm.dueDateFilter = 'overdue';
     tm.searchQuery = '';
     tmRenderTab();
   };
@@ -985,7 +1113,7 @@
     try {
       const url = '/api/tasks/team-capacity' + (dateStr ? `?date=${dateStr}` : '');
       const res = await apiRequest(url);
-      tm.teamCapacity = res.data || [];
+      tm.teamCapacity = (res.data || []).filter(m => !isExecutive(m));
 
       if (tm.teamCapacity.length === 0) {
         container.innerHTML = `<div style="padding:30px;text-align:center;grid-column:1/-1;color:var(--muted);">No team members found.</div>`;
@@ -2147,8 +2275,8 @@
       const res = await apiRequest(`/api/tasks/${taskId}`);
       const t = res.data;
       tm.selectedTask = t;
-      const isOverdue = t.is_overdue && t.status !== 'COMPLETED';
-      const pendingDays = getDaysPending(t.due_date);
+      const dueStatus = getDueStatus(t.due_date, t.status);
+      const isOverdue = dueStatus.isOverdue;
       const isTimerRunning = tm.activeTimer && tm.activeTimer.task_id === t.id;
       const isApprovalPending = t.approval_status === 'PENDING';
 
@@ -2160,7 +2288,7 @@
             <div style="display:flex;align-items:center;gap:10px;">
               <span class="task-code">${escHtml(t.task_code)}</span>
               <span class="badge-priority ${t.priority.toLowerCase()}">${escHtml(t.priority)}</span>
-              ${isOverdue ? `<span class="badge-overdue-alert">🚨 Overdue (${pendingDays}d)</span>` : ''}
+              ${dueStatus.badgeHtml}
               ${isApprovalPending ? `<span style="font-size:11px;background:#FEF3C7;color:#92400E;padding:2px 8px;border-radius:4px;font-weight:700;">Pending Approval</span>` : ''}
             </div>
             <button class="btn" onclick="tmCloseModal('tmDetailsModal')" style="font-size:20px;color:var(--muted);">&times;</button>
@@ -2235,8 +2363,9 @@
               </div>
               <div>
                 <span style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600;">Due Date</span>
-                <div style="font-size:13px;font-weight:700;color:${isOverdue ? '#EF4444' : 'var(--navy)'};margin-top:4px;">
+                <div style="font-size:13px;font-weight:700;color:${dueStatus.isOverdue ? '#EF4444' : (dueStatus.isDueToday ? '#D97706' : 'var(--navy)')};margin-top:4px;display:flex;align-items:center;gap:6px;">
                   ${t.due_date ? new Date(t.due_date).toLocaleDateString() : 'None'}
+                  ${dueStatus.badgeHtml}
                 </div>
               </div>
             </div>

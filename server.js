@@ -39,6 +39,7 @@ let dummyPasswordHash;
 let server;
 let sessionSecret;
 const loginAttempts = new Map();
+const presenceMap = new Map();
 let shuttingDown = false;
 
 function nowIso() { return new Date().toISOString(); }
@@ -212,7 +213,11 @@ async function getAuth(req) {
   if (!session) return null;
   const userRecord = await authProvider.findById(session.userId);
   if (!userRecord || !userRecord.active || !userRecord.portalAccess) return null;
-  return { token, csrf: session.csrf, loginId: session.loginId || null, user: publicUser(userRecord) };
+  const user = publicUser(userRecord);
+  if (user && user.employeeId) {
+    presenceMap.set(Number(user.employeeId), Date.now());
+  }
+  return { token, csrf: session.csrf, loginId: session.loginId || null, user };
 }
 
 function canSeeCategory(user, category) {
@@ -1195,6 +1200,206 @@ async function handleApi(req, res, url) {
     if (!auth) return;
     await db.run(`UPDATE annonymous_message SET is_read=1 WHERE to_user_id=? AND is_read=0`, [auth.user.id]);
     return sendJson(res, 200, { ok: true });
+  }
+
+  /* ============ EMPLOYEE CONTACTS & DIRECTORY ============ */
+
+  if (method === 'POST' && pathname === '/api/presence/heartbeat') {
+    const auth = await requireAuth(req, res);
+    if (!auth) return;
+    if (auth.user && auth.user.employeeId) {
+      presenceMap.set(Number(auth.user.employeeId), Date.now());
+    }
+    return sendJson(res, 200, { ok: true, timestamp: Date.now() });
+  }
+
+  if (method === 'GET' && pathname === '/api/contacts') {
+    const auth = await requireAuth(req, res);
+    if (!auth) return;
+
+    const tUsers = authProvider.schema.usersTable;
+    const tEmployees = authProvider.schema.employeesTable;
+    const tTeams = authProvider.schema.teamsTable;
+    const today = new Date().toISOString().slice(0, 10);
+
+    // 1. Fetch active employees
+    const employees = await db.all(`
+      SELECT 
+        e.employee_id,
+        e.employee_code,
+        e.first_name,
+        e.last_name,
+        e.email,
+        e.phone,
+        e.designation,
+        e.booking_link,
+        COALESCE(t.team_name, 'General') AS department,
+        e.status AS emp_status,
+        u.user_id,
+        u.username,
+        u.is_active AS user_active,
+        u.last_login
+      FROM ${tEmployees} e
+      LEFT JOIN ${tTeams} t ON e.team_id = t.team_id
+      LEFT JOIN ${tUsers} u ON u.employee_id = e.employee_id
+      WHERE (e.status IS NULL OR UPPER(e.status) = 'ACTIVE')
+      ORDER BY t.team_name ASC, e.first_name ASC
+    `);
+
+    // 2. Query today's approved leaves
+    let activeLeaves = [];
+    try {
+      activeLeaves = await db.all(`
+        SELECT employee_id, reason, leave_duration, status
+        FROM leaves
+        WHERE ? BETWEEN start_date AND end_date
+          AND UPPER(status) = 'APPROVED'
+      `, [today]);
+    } catch (e) {}
+    const leaveMap = new Map();
+    for (const l of activeLeaves) {
+      leaveMap.set(Number(l.employee_id), l);
+    }
+
+    // 3. Query active task timers
+    let activeTimers = [];
+    try {
+      activeTimers = await db.all(`
+        SELECT DISTINCT employee_id
+        FROM connect_task_time_entries
+        WHERE end_time IS NULL
+      `);
+    } catch (e) {}
+    const timerSet = new Set(activeTimers.map(t => Number(t.employee_id)));
+
+    // 4. Query today's attendance
+    let todayAtt = [];
+    try {
+      todayAtt = await db.all(`
+        SELECT employee_id, check_in, check_out, status
+        FROM attendance
+        WHERE date = ?
+      `, [today]);
+    } catch (e) {}
+    const attMap = new Map();
+    for (const a of todayAtt) {
+      attMap.set(Number(a.employee_id), a);
+    }
+
+    const now = Date.now();
+    const stats = { total: employees.length, online: 0, away: 0, on_leave: 0, offline: 0 };
+
+    const contacts = employees.map(emp => {
+      const empId = Number(emp.employee_id);
+      const fullName = [emp.first_name, emp.last_name].filter(Boolean).join(' ').trim() || emp.username || `Employee #${empId}`;
+      const empCode = emp.employee_code || `MYP-${String(empId).padStart(4, '0')}`;
+      const lastSeenMs = presenceMap.get(empId) || (emp.user_id ? presenceMap.get(Number(emp.user_id)) : 0);
+      const isTimerActive = timerSet.has(empId);
+      const leaveInfo = leaveMap.get(empId);
+      const attInfo = attMap.get(empId);
+
+      let status = 'OFFLINE';
+      let statusLabel = 'Offline';
+      let statusNote = '';
+
+      if (leaveInfo) {
+        status = 'ON_LEAVE';
+        statusLabel = 'On Leave';
+        statusNote = leaveInfo.leave_duration === 'HALF_DAY' ? 'Half Day Leave' : (leaveInfo.reason ? `Leave: ${leaveInfo.reason}` : 'Approved Leave');
+        stats.on_leave++;
+      } else if (isTimerActive || (lastSeenMs && (now - lastSeenMs < 5 * 60 * 1000))) {
+        status = 'ONLINE';
+        statusLabel = 'Online';
+        statusNote = isTimerActive ? 'Working on Task' : 'Active in Portal';
+        stats.online++;
+      } else if ((lastSeenMs && (now - lastSeenMs < 30 * 60 * 1000)) || (attInfo && attInfo.check_in && !attInfo.check_out)) {
+        status = 'AWAY';
+        statusLabel = 'Away';
+        statusNote = attInfo ? 'Checked in today' : 'Away';
+        stats.away++;
+      } else {
+        status = 'OFFLINE';
+        statusLabel = 'Offline';
+        statusNote = emp.last_login ? `Last login: ${emp.last_login}` : 'Offline';
+        stats.offline++;
+      }
+
+      return {
+        id: empId,
+        user_id: emp.user_id ? Number(emp.user_id) : null,
+        name: fullName,
+        first_name: emp.first_name || '',
+        last_name: emp.last_name || '',
+        employee_code: empCode,
+        department: emp.department || 'General',
+        designation: emp.designation || 'Team Member',
+        email: emp.email || '',
+        phone: emp.phone || '',
+        booking_link: emp.booking_link || '',
+        status,
+        status_label: statusLabel,
+        status_note: statusNote
+      };
+    });
+
+    const departments = ['All', ...new Set(contacts.map(c => c.department).filter(Boolean))];
+
+    return sendJson(res, 200, { contacts, departments, stats });
+  }
+
+  if (method === 'POST' && pathname === '/api/contacts/share') {
+    const auth = await requireAuth(req, res, { csrf: true });
+    if (!auth) return;
+    const body = await readJson(req);
+    const toEmployeeId = Number(body.to_employee_id);
+    const messageType = body.message_type === 'link' ? 'link' : 'message';
+    const content = cleanText(body.content, 2000);
+    const linkUrl = cleanText(body.link_url, 2048);
+    const linkTitle = cleanText(body.link_title, 255);
+
+    if (!toEmployeeId || (!content && !linkUrl)) {
+      return sendError(res, 400, 'Recipient and content/link are required.', 'VALIDATION_ERROR');
+    }
+
+    const id = randomToken(16);
+    const stamp = nowIso();
+    const senderEmployeeId = auth.user.employeeId || null;
+
+    try {
+      await db.run(`
+        INSERT INTO connect_employee_messages 
+          (id, from_user_id, from_employee_id, to_employee_id, message_type, content, link_url, link_title, is_read, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+      `, [id, auth.user.id, senderEmployeeId, toEmployeeId, messageType, content || linkTitle || linkUrl, linkUrl || null, linkTitle || null, stamp]);
+    } catch (e) {
+      console.error('[EmployeeContacts] Error saving message:', e.message);
+    }
+
+    return sendJson(res, 201, { ok: true, id, message: 'Shared successfully!' });
+  }
+
+  if (method === 'GET' && pathname === '/api/contacts/messages') {
+    const auth = await requireAuth(req, res);
+    if (!auth) return;
+    const empId = Number(url.searchParams.get('employee_id'));
+    if (!empId) return sendJson(res, 200, { messages: [] });
+
+    let rows = [];
+    try {
+      rows = await db.all(`
+        SELECT m.*, u.username AS from_username
+        FROM connect_employee_messages m
+        LEFT JOIN ${authProvider.schema.usersTable} u ON u.user_id = m.from_user_id
+        WHERE (m.from_user_id = ? AND m.to_employee_id = ?)
+           OR (m.from_employee_id = ? AND m.to_employee_id = ?)
+        ORDER BY m.created_at ASC
+        LIMIT 50
+      `, [auth.user.id, empId, empId, auth.user.employeeId || auth.user.id]);
+    } catch (e) {
+      rows = [];
+    }
+
+    return sendJson(res, 200, { messages: rows || [] });
   }
 
   /* ============ EMPLOYEE OF THE QUARTER (DIGITAL APPLICATION SYSTEM) ============ */
