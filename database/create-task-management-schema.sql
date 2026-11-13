@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS connect_task_events (
   event_code VARCHAR(50) NOT NULL UNIQUE,
   program_type ENUM('WEBINAR', 'ACADEMY', 'FGS', 'FGC', 'WORKSHOP', 'OTHER') NOT NULL DEFAULT 'OTHER',
   delivery_mode ENUM('ONLINE', 'OFFLINE', 'HYBRID') NOT NULL DEFAULT 'ONLINE',
-  event_date DATE NOT NULL,
+  event_date DATE NULL,
   venue_or_link VARCHAR(255) NULL,
   owner_employee_id INT NULL,
   status ENUM('PLANNING', 'ACTIVE', 'IN_DELIVERY', 'COMPLETED', 'CANCELLED') NOT NULL DEFAULT 'PLANNING',

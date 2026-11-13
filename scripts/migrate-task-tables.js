@@ -74,6 +74,14 @@ async function runMigration() {
     console.log("✓ Column crm_event_id already present on connect_task_events");
   }
 
+  // Ensure event_date can be NULL
+  try {
+    await db.run("ALTER TABLE connect_task_events MODIFY COLUMN event_date DATE NULL");
+    console.log("✓ Ensured event_date allows NULL in connect_task_events");
+  } catch (e) {
+    console.warn("Could not modify event_date:", e.message);
+  }
+
   await db.close();
   console.log('\nMigration completed successfully!');
 }

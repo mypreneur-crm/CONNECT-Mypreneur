@@ -1042,19 +1042,39 @@
   }
 
   // =========================================================================
-  // Tab 4: Event Projects (Webinar, Academy, FGS, FGC)
   // =========================================================================
+  // Tab 4: Event Projects (Code, Event Name, Type, Location, Start/End Date, Status)
+  // =========================================================================
+  tm.eventViewMode = 'table';
+  tm.eventSearchQuery = '';
+  tm.eventStatusFilter = 'ALL';
+
+  function formatEventDate(d) {
+    if (!d) return '<span style="color:var(--muted);font-weight:400;">—</span>';
+    try {
+      const dt = new Date(d);
+      if (isNaN(dt.getTime())) return escHtml(d);
+      return dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    } catch (e) {
+      return escHtml(d);
+    }
+  }
+
   function renderEventsTab() {
     return `
     <div style="display:flex;flex-direction:column;gap:18px;">
-      <div style="background:#FFF;padding:18px 24px;border-radius:14px;border:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+      <!-- Header banner with CRM sync & stats -->
+      <div style="background:#FFF;padding:18px 24px;border-radius:14px;border:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;box-shadow:0 1px 4px rgba(0,0,0,0.02);">
         <div>
-          <h3 style="font-size:16px;font-weight:700;color:var(--navy);">Event Project Workspaces</h3>
-          <p style="font-size:13px;color:var(--muted);margin:2px 0 0 0;">
-            CRM Event Projects (FGC26, FGS, Webinars, Workshops) with daily workload allocations across Sales, Telecallers, Digital Marketing, and Operations.
+          <div style="display:flex;align-items:center;gap:10px;">
+            <h3 style="font-size:17px;font-weight:800;color:var(--navy);margin:0;">Event Project Workspaces</h3>
+            <span class="badge-pill" id="tmEventCountBadge" style="background:#EBF7FF;color:#0284C7;font-weight:700;">${(tm.events || []).length} Events</span>
+          </div>
+          <p style="font-size:13px;color:var(--muted);margin:4px 0 0 0;">
+            Live events synced from CRM with lead pipeline tracking and daily cross-team workloads (Sales, Telecallers, Digital, Operations, Support).
           </p>
         </div>
-        <div style="display:flex;align-items:center;gap:10px;">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
           <button class="btn btn-secondary btn-sm" onclick="tmSyncCrmEvents()" style="font-weight:700;display:flex;align-items:center;gap:6px;" title="Re-sync latest events and lead pipeline from CRM">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px;"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
             Sync CRM Events
@@ -1065,103 +1085,282 @@
         </div>
       </div>
 
-      <div id="tmEventsGrid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(360px, 1fr));gap:18px;">
-        <div style="padding:30px;color:var(--muted);text-align:center;grid-column:1/-1;">Loading events...</div>
+      <!-- Filter & Search Toolbar -->
+      <div style="background:#FFF;padding:14px 20px;border-radius:12px;border:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+        <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:280px;">
+          <div style="position:relative;flex:1;max-width:380px;">
+            <input type="text" id="tmEventSearchInput" class="dup-search-input" placeholder="Search Code, Name, Location, Type..." value="${escHtml(tm.eventSearchQuery || '')}" oninput="tmOnEventSearchInput(this.value)" style="padding:8px 12px 8px 34px;font-size:13px;width:100%;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;color:var(--muted);position:absolute;left:10px;top:10px;"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg>
+          </div>
+          <select id="tmEventStatusFilter" onchange="tmOnEventStatusFilterChange(this.value)" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-weight:600;background:#FFF;color:var(--navy);">
+            <option value="ALL" ${tm.eventStatusFilter === 'ALL' ? 'selected' : ''}>All Status</option>
+            <option value="ACTIVE" ${tm.eventStatusFilter === 'ACTIVE' ? 'selected' : ''}>Active</option>
+            <option value="COMPLETED" ${tm.eventStatusFilter === 'COMPLETED' ? 'selected' : ''}>Completed</option>
+            <option value="INACTIVE" ${tm.eventStatusFilter === 'INACTIVE' ? 'selected' : ''}>Inactive / Other</option>
+          </select>
+        </div>
+
+        <!-- View Mode Switcher -->
+        <div style="display:flex;align-items:center;background:#F1F5F9;border-radius:8px;padding:3px;">
+          <button class="btn btn-sm ${tm.eventViewMode === 'table' ? 'active' : ''}" onclick="tmSetEventViewMode('table')" style="border-radius:6px;padding:5px 12px;font-size:12.5px;font-weight:700;${tm.eventViewMode === 'table' ? 'background:#FFF;color:var(--navy);box-shadow:0 1px 3px rgba(0,0,0,0.1);' : 'background:transparent;color:var(--muted);'}">
+            ☰ Table View
+          </button>
+          <button class="btn btn-sm ${tm.eventViewMode === 'grid' ? 'active' : ''}" onclick="tmSetEventViewMode('grid')" style="border-radius:6px;padding:5px 12px;font-size:12.5px;font-weight:700;${tm.eventViewMode === 'grid' ? 'background:#FFF;color:var(--navy);box-shadow:0 1px 3px rgba(0,0,0,0.1);' : 'background:transparent;color:var(--muted);'}">
+            ☷ Cards View
+          </button>
+        </div>
+      </div>
+
+      <!-- Events Content Container -->
+      <div id="tmEventsViewContainer">
+        <div style="padding:40px;color:var(--muted);text-align:center;background:#FFF;border-radius:12px;border:1px solid var(--border);">Loading events...</div>
       </div>
     </div>
     `;
   }
 
+  window.tmSetEventViewMode = function(mode) {
+    tm.eventViewMode = mode;
+    tmRenderEvents();
+  };
+
+  window.tmOnEventSearchInput = function(val) {
+    tm.eventSearchQuery = val || '';
+    tmRenderEvents();
+  };
+
+  window.tmOnEventStatusFilterChange = function(val) {
+    tm.eventStatusFilter = val || 'ALL';
+    tmRenderEvents();
+  };
+
   async function tmLoadEvents() {
-    const container = $tm('tmEventsGrid');
-    if (!container) return;
     try {
       const res = await apiRequest('/api/tasks/events');
       tm.events = res.data || [];
-
-      if (tm.events.length === 0) {
-        container.innerHTML = `<div style="padding:40px;text-align:center;grid-column:1/-1;color:var(--muted);">No event project workspaces found. Click "+ New Event Project" or "Sync CRM Events".</div>`;
-        return;
-      }
-
-      container.innerHTML = tm.events.map(ev => {
-        const total = ev.total_tasks || 0;
-        const comp = ev.completed_tasks || 0;
-        const pct = ev.progress_pct || 0;
-        const leads = ev.lead_pipeline_count || 0;
-        const progType = ev.program_type || 'EVENT';
-        const isOffline = ev.delivery_mode === 'OFFLINE';
-
-        return `
-        <div class="card" style="padding:22px;background:#FFF;border-radius:16px;border:1px solid var(--border);display:flex;flex-direction:column;gap:14px;box-shadow:0 2px 10px rgba(0,0,0,0.02);position:relative;">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
-            <div style="flex:1;">
-              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
-                <span style="font-size:11px;background:#EBF7FF;color:#0284C7;padding:2px 8px;border-radius:4px;font-weight:700;">
-                  ${escHtml(progType)}
-                </span>
-                <span style="font-size:11px;background:${isOffline ? '#FEF3C7' : '#ECFDF5'};color:${isOffline ? '#92400E' : '#065F46'};padding:2px 8px;border-radius:4px;font-weight:700;">
-                  ${isOffline ? '📍 Offline' : '🌐 Online'}
-                </span>
-                ${ev.crm_event_id ? `
-                <span style="font-size:10.5px;background:#F1F5F9;color:var(--muted);padding:2px 6px;border-radius:4px;font-weight:600;" title="Synced from CRM Event ID #${ev.crm_event_id}">
-                  CRM #${ev.crm_event_id}
-                </span>
-                ` : ''}
-              </div>
-              <strong style="font-size:16px;color:var(--navy);display:block;line-height:1.3;">
-                ${escHtml(ev.event_name)}
-              </strong>
-              <div style="font-size:12px;color:var(--muted);margin-top:4px;">
-                Code: <strong>${escHtml(ev.event_code)}</strong> · Location: <strong>${escHtml(ev.venue_or_link || 'Location TBD')}</strong>
-              </div>
-            </div>
-            <span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;background:${ev.status === 'COMPLETED' ? '#ECFDF5' : '#EBF7FF'};color:${ev.status === 'COMPLETED' ? '#065F46' : '#0284C7'};">
-              ${escHtml(ev.status)}
-            </span>
-          </div>
-
-          <!-- Highlight metrics row -->
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;background:#F8FAFC;padding:10px 14px;border-radius:10px;border:1px solid #E2E8F0;">
-            <div>
-              <span style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600;display:block;">Lead Pipeline</span>
-              <strong style="font-size:15px;color:#0284C7;">
-                👥 ${leads} Leads
-              </strong>
-            </div>
-            <div>
-              <span style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600;display:block;">Task Progress</span>
-              <strong style="font-size:15px;color:#059669;">
-                📋 ${comp} / ${total} <span style="font-size:11px;font-weight:600;color:var(--muted);">(${pct}%)</span>
-              </strong>
-            </div>
-          </div>
-
-          <!-- Progress Bar -->
-          <div style="background:#E2E8F0;border-radius:6px;height:7px;overflow:hidden;">
-            <div style="background:#10B981;width:${pct}%;height:100%;"></div>
-          </div>
-
-          <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted);">
-            <span>📅 Event Date: <strong>${ev.event_date ? new Date(ev.event_date).toLocaleDateString() : 'TBD'}</strong></span>
-          </div>
-
-          <div style="display:flex;gap:8px;margin-top:2px;">
-            <button class="btn btn-secondary btn-sm" style="flex:1;font-weight:700;" onclick="tmOpenEventWorkspace('${ev.id}')">
-              View Workstreams &amp; Tasks &rarr;
-            </button>
-            ${total === 0 ? `
-            <button class="btn btn-sm" style="background:#EBF7FF;color:#0284C7;border:1px solid #BAE6FD;border-radius:8px;font-weight:700;" onclick="tmScaffoldEvent('${ev.id}')" title="Auto-generate multi-team workstreams">
-              ⚡ Scaffold
-            </button>
-            ` : ''}
-          </div>
-        </div>
-        `;
-      }).join('');
+      const badge = $tm('tmEventCountBadge');
+      if (badge) badge.innerText = `${tm.events.length} Events`;
+      tmRenderEvents();
     } catch (e) {
       console.error('Error loading events:', e);
-      if (container) container.innerHTML = `<div style="color:#EF4444;grid-column:1/-1;">Failed to load events: ${escHtml(e.message)}</div>`;
+      const container = $tm('tmEventsViewContainer');
+      if (container) container.innerHTML = `<div style="color:#EF4444;padding:24px;text-align:center;">Failed to load events: ${escHtml(e.message)}</div>`;
+    }
+  }
+
+  function getFilteredEvents() {
+    let list = tm.events || [];
+    const q = (tm.eventSearchQuery || '').trim().toLowerCase();
+    const st = tm.eventStatusFilter || 'ALL';
+
+    if (st !== 'ALL') {
+      list = list.filter(ev => {
+        const evSt = String(ev.status || '').toUpperCase();
+        if (st === 'ACTIVE') return evSt === 'ACTIVE';
+        if (st === 'COMPLETED') return evSt === 'COMPLETED';
+        if (st === 'INACTIVE') return evSt !== 'ACTIVE' && evSt !== 'COMPLETED';
+        return true;
+      });
+    }
+
+    if (q) {
+      list = list.filter(ev => {
+        return (ev.event_code || '').toLowerCase().includes(q) ||
+               (ev.event_name || '').toLowerCase().includes(q) ||
+               (ev.event_type || '').toLowerCase().includes(q) ||
+               (ev.location || '').toLowerCase().includes(q);
+      });
+    }
+    return list;
+  }
+
+  function tmRenderEvents() {
+    const container = $tm('tmEventsViewContainer');
+    if (!container) return;
+
+    const list = getFilteredEvents();
+    if (list.length === 0) {
+      container.innerHTML = `
+      <div style="padding:48px 24px;text-align:center;background:#FFF;border-radius:12px;border:1px solid var(--border);">
+        <p style="font-size:14px;color:var(--muted);margin:0 0 12px 0;">No matching event projects found.</p>
+        <button class="btn btn-secondary btn-sm" onclick="tmSyncCrmEvents()">Sync from CRM</button>
+      </div>`;
+      return;
+    }
+
+    if (tm.eventViewMode === 'table') {
+      container.innerHTML = `
+      <div style="background:#FFF;border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.02);">
+        <div style="overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:13px;text-align:left;">
+            <thead>
+              <tr style="background:#F8FAFC;border-bottom:1.5px solid var(--border);color:var(--navy);">
+                <th style="padding:12px 14px;font-weight:700;">Code</th>
+                <th style="padding:12px 14px;font-weight:700;">Event Name</th>
+                <th style="padding:12px 14px;font-weight:700;">Type</th>
+                <th style="padding:12px 14px;font-weight:700;">Location</th>
+                <th style="padding:12px 14px;font-weight:700;">Start Date</th>
+                <th style="padding:12px 14px;font-weight:700;">End Date</th>
+                <th style="padding:12px 14px;font-weight:700;">Status</th>
+                <th style="padding:12px 14px;font-weight:700;">Pipeline</th>
+                <th style="padding:12px 14px;font-weight:700;">Tasks</th>
+                <th style="padding:12px 14px;font-weight:700;text-align:right;">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${list.map(ev => {
+                const total = ev.total_tasks || 0;
+                const comp = ev.completed_tasks || 0;
+                const pct = ev.progress_pct || 0;
+                const leads = ev.lead_pipeline_count || 0;
+                const isActive = (ev.status || '').toUpperCase() === 'ACTIVE';
+                const isCompleted = (ev.status || '').toUpperCase() === 'COMPLETED';
+
+                return `
+                <tr style="border-bottom:1px solid #F1F5F9;transition:background 0.15s ease;" onmouseover="this.style.background='#F8FAFC'" onmouseout="this.style.background=''">
+                  <td style="padding:12px 14px;white-space:nowrap;">
+                    <span class="task-code" style="font-weight:700;cursor:pointer;" onclick="tmOpenEventWorkspace('${ev.id}')" title="Click to view workspace">
+                      ${escHtml(ev.event_code)}
+                    </span>
+                  </td>
+                  <td style="padding:12px 14px;">
+                    <div style="font-weight:700;color:var(--navy);cursor:pointer;line-height:1.3;" onclick="tmOpenEventWorkspace('${ev.id}')">
+                      ${escHtml(ev.event_name)}
+                    </div>
+                  </td>
+                  <td style="padding:12px 14px;white-space:nowrap;">
+                    <span style="display:inline-block;padding:2px 8px;border-radius:6px;font-size:11.5px;font-weight:700;background:#EBF7FF;color:#0284C7;">
+                      ${escHtml(ev.event_type || 'General')}
+                    </span>
+                  </td>
+                  <td style="padding:12px 14px;white-space:nowrap;color:var(--navy);">
+                    ${ev.location && ev.location !== '-' ? `<span>📍 ${escHtml(ev.location)}</span>` : `<span style="color:var(--muted);">—</span>`}
+                  </td>
+                  <td style="padding:12px 14px;white-space:nowrap;color:var(--navy);">
+                    ${formatEventDate(ev.start_date || ev.event_date)}
+                  </td>
+                  <td style="padding:12px 14px;white-space:nowrap;color:var(--navy);">
+                    ${formatEventDate(ev.end_date)}
+                  </td>
+                  <td style="padding:12px 14px;white-space:nowrap;">
+                    <span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;background:${isActive ? '#ECFDF5' : (isCompleted ? '#F1F5F9' : '#FEF3C7')};color:${isActive ? '#065F46' : (isCompleted ? '#475569' : '#92400E')};">
+                      ${escHtml(ev.status || 'ACTIVE')}
+                    </span>
+                  </td>
+                  <td style="padding:12px 14px;white-space:nowrap;">
+                    <span style="font-weight:700;color:#0284C7;font-size:12.5px;">👥 ${leads} Leads</span>
+                  </td>
+                  <td style="padding:12px 14px;white-space:nowrap;">
+                    <div>
+                      <span style="font-weight:700;color:#059669;font-size:12px;">📋 ${comp} / ${total}</span>
+                      <div style="background:#E2E8F0;border-radius:4px;height:4px;width:70px;margin-top:4px;overflow:hidden;">
+                        <div style="background:#10B981;width:${pct}%;height:100%;"></div>
+                      </div>
+                    </div>
+                  </td>
+                  <td style="padding:12px 14px;white-space:nowrap;text-align:right;">
+                    <div style="display:flex;gap:6px;justify-content:flex-end;align-items:center;">
+                      <button class="btn btn-sm btn-primary" onclick="tmOpenEventWorkspace('${ev.id}')" style="background:var(--navy);color:#FFF;padding:5px 10px;font-weight:700;font-size:11.5px;border-radius:6px;" title="View team workstreams and tasks">
+                        Workstream &rarr;
+                      </button>
+                      <button class="btn btn-sm btn-secondary" onclick="tmOpenCreateTaskForEvent('${ev.id}', '${escHtml(ev.event_code)}')" style="padding:5px 8px;font-size:11.5px;font-weight:700;border-radius:6px;" title="Add new task linked to this event">
+                        + Task
+                      </button>
+                      ${total === 0 ? `
+                      <button class="btn btn-sm" onclick="tmScaffoldEvent('${ev.id}')" style="background:#EBF7FF;color:#0284C7;border:1px solid #BAE6FD;padding:5px 8px;font-size:11.5px;font-weight:700;border-radius:6px;" title="Auto-generate multi-team tasks">
+                        ⚡ Scaffold
+                      </button>
+                      ` : ''}
+                    </div>
+                  </td>
+                </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      `;
+    } else {
+      // Grid Cards View
+      container.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(360px, 1fr));gap:18px;">
+        ${list.map(ev => {
+          const total = ev.total_tasks || 0;
+          const comp = ev.completed_tasks || 0;
+          const pct = ev.progress_pct || 0;
+          const leads = ev.lead_pipeline_count || 0;
+          const isActive = (ev.status || '').toUpperCase() === 'ACTIVE';
+          const isCompleted = (ev.status || '').toUpperCase() === 'COMPLETED';
+
+          return `
+          <div class="card" style="padding:20px;background:#FFF;border-radius:14px;border:1px solid var(--border);display:flex;flex-direction:column;gap:12px;box-shadow:0 2px 8px rgba(0,0,0,0.02);">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+              <div style="flex:1;">
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
+                  <span class="task-code" style="font-weight:700;">${escHtml(ev.event_code)}</span>
+                  <span style="font-size:11px;background:#EBF7FF;color:#0284C7;padding:2px 8px;border-radius:4px;font-weight:700;">
+                    ${escHtml(ev.event_type || 'General')}
+                  </span>
+                  ${ev.crm_event_id ? `
+                  <span style="font-size:10.5px;background:#F1F5F9;color:var(--muted);padding:2px 6px;border-radius:4px;font-weight:600;">
+                    CRM #${ev.crm_event_id}
+                  </span>
+                  ` : ''}
+                </div>
+                <strong style="font-size:15.5px;color:var(--navy);display:block;line-height:1.3;cursor:pointer;" onclick="tmOpenEventWorkspace('${ev.id}')">
+                  ${escHtml(ev.event_name)}
+                </strong>
+              </div>
+              <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:${isActive ? '#ECFDF5' : (isCompleted ? '#F1F5F9' : '#FEF3C7')};color:${isActive ? '#065F46' : (isCompleted ? '#475569' : '#92400E')};">
+                ${escHtml(ev.status || 'ACTIVE')}
+              </span>
+            </div>
+
+            <!-- Details list -->
+            <div style="display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--navy);background:#F8FAFC;padding:10px 12px;border-radius:8px;border:1px solid #E2E8F0;">
+              <div>📍 Location: <strong>${escHtml(ev.location && ev.location !== '-' ? ev.location : '—')}</strong></div>
+              <div style="display:flex;gap:14px;">
+                <span>📅 Start: <strong>${formatEventDate(ev.start_date || ev.event_date)}</strong></span>
+                <span>🏁 End: <strong>${formatEventDate(ev.end_date)}</strong></span>
+              </div>
+            </div>
+
+            <!-- Highlight metrics row -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;background:#F1F5F9;padding:8px 12px;border-radius:8px;">
+              <div>
+                <span style="font-size:10.5px;color:var(--muted);text-transform:uppercase;font-weight:700;display:block;">Pipeline Leads</span>
+                <strong style="font-size:14px;color:#0284C7;">👥 ${leads} Leads</strong>
+              </div>
+              <div>
+                <span style="font-size:10.5px;color:var(--muted);text-transform:uppercase;font-weight:700;display:block;">Tasks</span>
+                <strong style="font-size:14px;color:#059669;">📋 ${comp} / ${total} (${pct}%)</strong>
+              </div>
+            </div>
+
+            <!-- Progress Bar -->
+            <div style="background:#E2E8F0;border-radius:6px;height:6px;overflow:hidden;">
+              <div style="background:#10B981;width:${pct}%;height:100%;"></div>
+            </div>
+
+            <div style="display:flex;gap:8px;margin-top:2px;">
+              <button class="btn btn-secondary btn-sm" style="flex:1;font-weight:700;" onclick="tmOpenEventWorkspace('${ev.id}')">
+                Workstreams &rarr;
+              </button>
+              <button class="btn btn-sm btn-secondary" onclick="tmOpenCreateTaskForEvent('${ev.id}', '${escHtml(ev.event_code)}')" style="font-weight:700;">
+                + Task
+              </button>
+              ${total === 0 ? `
+              <button class="btn btn-sm" style="background:#EBF7FF;color:#0284C7;border:1px solid #BAE6FD;border-radius:8px;font-weight:700;" onclick="tmScaffoldEvent('${ev.id}')" title="Auto-generate multi-team workstreams">
+                ⚡ Scaffold
+              </button>
+              ` : ''}
+            </div>
+          </div>
+          `;
+        }).join('')}
+      </div>
+      `;
     }
   }
 
@@ -1271,24 +1470,30 @@
       anchor.innerHTML = `
       <div class="dup-modal-overlay" id="tmEventWorkspaceModal" style="display:flex;">
         <div class="dup-modal-box" style="max-width:880px;max-height:90vh;display:flex;flex-direction:column;">
-          <!-- Modal Header -->
+          <!-- Modal Header with full CRM Details -->
           <div style="display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:14px;border-bottom:1px solid var(--border);">
-            <div>
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-                <span style="font-size:11px;background:#EBF7FF;color:#0284C7;padding:3px 8px;border-radius:4px;font-weight:700;">
-                  ${escHtml(ev.program_type || 'EVENT')}
+            <div style="flex:1;">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
+                <span class="task-code" style="font-size:12px;font-weight:700;">${escHtml(ev.event_code)}</span>
+                <span style="font-size:11px;background:#EBF7FF;color:#0284C7;padding:3px 8px;border-radius:6px;font-weight:700;">
+                  ${escHtml(ev.event_type || 'General')}
                 </span>
-                <span class="task-code" style="font-size:12px;">${escHtml(ev.event_code)}</span>
-                <span style="font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:999px;background:#ECFDF5;color:#065F46;">
-                  ${escHtml(ev.status)}
+                <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:${(ev.status || '').toUpperCase() === 'ACTIVE' ? '#ECFDF5' : '#F1F5F9'};color:${(ev.status || '').toUpperCase() === 'ACTIVE' ? '#065F46' : '#475569'};">
+                  ${escHtml(ev.status || 'ACTIVE')}
                 </span>
+                ${ev.crm_event_id ? `
+                <span style="font-size:10.5px;background:#F1F5F9;color:var(--muted);padding:2px 6px;border-radius:4px;font-weight:600;">
+                  CRM ID #${ev.crm_event_id}
+                </span>` : ''}
               </div>
-              <h2 style="font-size:18px;font-weight:800;color:var(--navy);margin:0;">${escHtml(ev.event_name)}</h2>
-              <div style="font-size:12.5px;color:var(--muted);margin-top:4px;">
-                📍 ${escHtml(ev.venue_or_link || 'Location TBD')} · 📅 ${ev.event_date ? new Date(ev.event_date).toLocaleDateString() : 'TBD'} · Delivery: <strong>${escHtml(ev.delivery_mode || 'OFFLINE')}</strong>
+              <h2 style="font-size:18px;font-weight:800;color:var(--navy);margin:0 0 6px 0;">${escHtml(ev.event_name)}</h2>
+              <div style="display:flex;flex-wrap:wrap;gap:14px;font-size:12.5px;color:var(--navy);background:#F8FAFC;padding:8px 12px;border-radius:8px;border:1px solid #E2E8F0;">
+                <div>📍 Location: <strong>${escHtml(ev.location && ev.location !== '-' ? ev.location : '—')}</strong></div>
+                <div>📅 Start Date: <strong>${formatEventDate(ev.start_date || ev.event_date)}</strong></div>
+                <div>🏁 End Date: <strong>${formatEventDate(ev.end_date)}</strong></div>
               </div>
             </div>
-            <button class="btn" onclick="tmCloseModal('tmEventWorkspaceModal')" style="font-size:22px;color:var(--muted);">&times;</button>
+            <button class="btn" onclick="tmCloseModal('tmEventWorkspaceModal')" style="font-size:22px;color:var(--muted);margin-left:12px;">&times;</button>
           </div>
 
           <!-- CRM Lead Pipeline & Progress Banner -->
