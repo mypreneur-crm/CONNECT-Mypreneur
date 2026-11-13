@@ -34,3 +34,4 @@ testTaskPermissions().catch(err => {
   console.error('Task permission test failed:', err);
   process.exit(1);
 });
+

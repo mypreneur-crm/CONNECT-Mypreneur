@@ -135,3 +135,4 @@ testChatSuite().catch(err => {
   console.error('Chat test failed:', err);
   process.exit(1);
 });
+

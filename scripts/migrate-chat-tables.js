@@ -91,3 +91,4 @@ migrate().catch(err => {
   console.error('Fatal migration failure:', err);
   process.exit(1);
 });
+
