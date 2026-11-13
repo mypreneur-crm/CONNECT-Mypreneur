@@ -1138,6 +1138,7 @@
     try {
       const res = await apiRequest('/api/tasks/events');
       tm.events = res.data || [];
+      if (res.eventTypes) tm.eventTypes = res.eventTypes;
       const badge = $tm('tmEventCountBadge');
       if (badge) badge.innerText = `${tm.events.length} Events`;
       tmRenderEvents();
@@ -1411,6 +1412,145 @@
 
   window.tmOpenCreateTaskModal = function(defaults = {}) {
     return tmOpenTaskFormModal(defaults);
+  };
+
+  // =========================================================================
+  // Create New Event Project Modal
+  // =========================================================================
+  window.tmOpenCreateEventModal = function() {
+    const anchor = $tm('tmModalAnchor');
+    const types = tm.eventTypes && tm.eventTypes.length > 0 ? tm.eventTypes : [
+      { id: 4, name: 'FGC' },
+      { id: 3, name: 'Webinar' },
+      { id: 1, name: 'Online' },
+      { id: 2, name: 'Offline' },
+      { id: 5, name: 'Master Mind' },
+      { id: 7, name: 'Meet and Greet' },
+      { id: 8, name: 'G-Forms' },
+      { id: 6, name: 'Post Sessions' }
+    ];
+
+    anchor.innerHTML = `
+    <div class="dup-modal-overlay" id="tmCreateEventModal" style="display:flex;">
+      <div class="dup-modal-box" style="max-width:560px;">
+        <div class="dup-modal-head">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:20px;">📅</span>
+            <h3 style="font-size:16px;font-weight:700;color:var(--navy);margin:0;">Create New Event Project</h3>
+          </div>
+          <button class="btn" onclick="tmCloseModal('tmCreateEventModal')" style="font-size:20px;color:var(--muted);">&times;</button>
+        </div>
+
+        <form id="tmCreateEventForm" onsubmit="tmHandleEventFormSubmit(event)" class="dup-modal-body" style="gap:14px;">
+          <div style="display:grid;grid-template-columns:1fr 2fr;gap:12px;">
+            <div>
+              <label style="display:block;font-size:12px;font-weight:700;color:var(--navy);margin-bottom:4px;">Event Code *</label>
+              <input type="text" id="ef_code" required class="dup-search-input" style="padding:9px 12px;font-size:13.5px;font-weight:700;text-transform:uppercase;" placeholder="e.g. FGC27, FGS">
+            </div>
+            <div>
+              <label style="display:block;font-size:12px;font-weight:700;color:var(--navy);margin-bottom:4px;">Event Name *</label>
+              <input type="text" id="ef_name" required class="dup-search-input" style="padding:9px 12px;font-size:13.5px;" placeholder="e.g. Foodpreneur Growth Conclave 27">
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div>
+              <label style="display:block;font-size:12px;font-weight:700;color:var(--navy);margin-bottom:4px;">Event Type</label>
+              <select id="ef_type_id" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:10px;font-size:13px;background:#FFF;">
+                ${types.map(t => `<option value="${t.id}">${escHtml(t.name)}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label style="display:block;font-size:12px;font-weight:700;color:var(--navy);margin-bottom:4px;">Location / Venue / Link</label>
+              <input type="text" id="ef_location" class="dup-search-input" style="padding:9px 12px;font-size:13px;" placeholder="e.g. Madurai, Zoom, Chennai">
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div>
+              <label style="display:block;font-size:12px;font-weight:700;color:var(--navy);margin-bottom:4px;">Start Date</label>
+              <input type="date" id="ef_start_date" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:10px;font-size:13px;">
+            </div>
+            <div>
+              <label style="display:block;font-size:12px;font-weight:700;color:var(--navy);margin-bottom:4px;">End Date</label>
+              <input type="date" id="ef_end_date" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:10px;font-size:13px;">
+            </div>
+          </div>
+
+          <div>
+            <label style="display:block;font-size:12px;font-weight:700;color:var(--navy);margin-bottom:4px;">Status</label>
+            <select id="ef_status" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:10px;font-size:13px;background:#FFF;">
+              <option value="ACTIVE" selected>ACTIVE (Open for Leads &amp; Workstreams)</option>
+              <option value="COMPLETED">COMPLETED</option>
+              <option value="INACTIVE">INACTIVE</option>
+            </select>
+          </div>
+
+          <!-- Auto-scaffold checkbox -->
+          <div style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:10px;padding:12px 14px;">
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+              <input type="checkbox" id="ef_auto_scaffold" checked style="width:16px;height:16px;">
+              <span style="font-size:13px;font-weight:700;color:#166534;">⚡ Auto-generate Multi-team Workstream Tasks</span>
+            </label>
+            <p style="font-size:12px;color:#15803D;margin:4px 0 0 26px;">
+              Pre-populates standard tasks across Sales/Telecallers (pipeline calls), Digital Marketing (ad campaigns, WhatsApp broadcast), Operations (venue, stage, packing), and Support (kits, badges).
+            </p>
+          </div>
+
+          <div class="dup-actions-bar" style="margin:8px -24px -24px -24px;">
+            <button type="button" class="btn btn-secondary" onclick="tmCloseModal('tmCreateEventModal')">Cancel</button>
+            <button type="submit" id="ef_submit_btn" class="btn btn-primary" style="background:var(--navy);color:#FFF;font-weight:700;">
+              Create Event Project
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+    `;
+
+    setTimeout(() => {
+      const codeInp = $tm('ef_code');
+      if (codeInp) codeInp.focus();
+    }, 100);
+  };
+
+  window.tmHandleEventFormSubmit = async function(e) {
+    e.preventDefault();
+    const submitBtn = $tm('ef_submit_btn');
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerText = 'Creating Event...';
+    }
+
+    const payload = {
+      event_code: ($tm('ef_code')?.value || '').trim().toUpperCase(),
+      event_name: ($tm('ef_name')?.value || '').trim(),
+      event_type_id: parseInt($tm('ef_type_id')?.value, 10) || null,
+      location: ($tm('ef_location')?.value || '').trim(),
+      start_date: $tm('ef_start_date')?.value || null,
+      end_date: $tm('ef_end_date')?.value || null,
+      status: $tm('ef_status')?.value || 'ACTIVE',
+      auto_scaffold_tasks: Boolean($tm('ef_auto_scaffold')?.checked)
+    };
+
+    try {
+      const res = await apiRequest('/api/tasks/events', {
+        method: 'POST',
+        body: payload
+      });
+      tmCloseModal('tmCreateEventModal');
+      toast('Event project created successfully in CRM & Task Manager!');
+      await tmLoadEvents();
+      if (res.data && res.data.id) {
+        await tmOpenEventWorkspace(res.data.id);
+      }
+    } catch (err) {
+      alert(`Could not create event: ${err.message}`);
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerText = 'Create Event Project';
+      }
+    }
   };
 
   window.tmOpenEventWorkspace = async function(eventId) {
