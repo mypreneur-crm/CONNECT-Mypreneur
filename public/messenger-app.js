@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-(function(window) {
+(function (window) {
   'use strict';
 
   // State Management
@@ -28,27 +28,27 @@
     customStatus: '',
     idleTimer: null,
     isIdle: false,
-    
+
     // Messenger UI
     messengerOpen: false,
     activeTab: 'chats', // 'chats' | 'groups' | 'directory'
     searchQuery: '',
     conversations: [],
     employees: [],
-    
+
     // Active Floating Chat Windows (keyed by convId)
     openChats: {}, // convId -> { conv, minimized: bool, messages: [], lastMessageId, input: '' }
-    
+
     // Timers & intervals
     presenceInterval: null,
     callCheckInterval: null,
     unreadCheckInterval: null,
-    
+
     // WebRTC Calling State
     activeCall: null, // { callId, peerId, peerName, type, isCaller, pc, localStream, remoteStream, status, timer, timerInterval }
     incomingCall: null, // { callId, callerName, callerId, type, sdpOffer }
     ringtoneOsc: null,
-    
+
     // Title Blinking
     titleBlinkTimer: null,
     originalTitle: document.title || 'CONNECT - Mypreneur',
@@ -105,7 +105,7 @@
       if (AudioCtx) audioCtx = new AudioCtx();
     }
     if (audioCtx && audioCtx.state === 'suspended') {
-      audioCtx.resume().catch(() => {});
+      audioCtx.resume().catch(() => { });
     }
     return audioCtx;
   }
@@ -179,7 +179,7 @@
         osc2.start(now);
         osc1.stop(now + 1.35);
         osc2.stop(now + 1.35);
-      } catch (e) {}
+      } catch (e) { }
     }
 
     playSingleRing();
@@ -241,7 +241,7 @@
           openFloatingChat(convId);
           notif.close();
         };
-      } catch (e) {}
+      } catch (e) { }
     }
   }
 
@@ -298,7 +298,7 @@
           custom_status: state.customStatus
         })
       });
-    } catch (e) {}
+    } catch (e) { }
   }
 
   async function fetchAllPresence() {
@@ -310,7 +310,7 @@
         state.presenceMap = data.presence;
         syncPresenceToDOM();
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 
   // Update online dots across entire page & Employee Contacts directory
@@ -373,7 +373,7 @@
       if (data.ok && data.total_unread > 0) {
         showCatchupModal(data);
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 
   function showCatchupModal(data) {
@@ -797,7 +797,7 @@
         updateTotalUnreadBadge();
         renderTabContent();
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 
   async function loadEmployees() {
@@ -808,7 +808,7 @@
       if (data.contacts) {
         state.employees = data.contacts;
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 
   function updateTotalUnreadBadge() {
@@ -1252,7 +1252,7 @@
         chat.messages = data.messages || [];
         renderChatMessages(convId, true);
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 
   async function pollChatMessages(convId) {
@@ -1284,7 +1284,7 @@
           }
         }
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 
   function renderChatMessages(convId, scrollDown = false) {
@@ -1457,7 +1457,7 @@
       const conv = state.conversations.find(c => c.id === convId);
       if (conv) conv.unread_count = 0;
       updateTotalUnreadBadge();
-    } catch (e) {}
+    } catch (e) { }
   }
 
   /* ==========================================================================
@@ -1674,11 +1674,11 @@
             for (const cand of data.peerCandidates) {
               try {
                 await state.activeCall.pc.addIceCandidate(new RTCIceCandidate(cand));
-              } catch (e) {}
+              } catch (e) { }
             }
           }
         }
-      } catch (e) {}
+      } catch (e) { }
     }, 1500);
   }
 
@@ -1695,7 +1695,7 @@
         startRingtone();
         showIncomingCallModal(data.incoming);
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 
   function showIncomingCallModal(call) {
@@ -1748,7 +1748,7 @@
           method: 'POST',
           body: { call_id: call.callId, action: 'DECLINE' }
         });
-      } catch (e) {}
+      } catch (e) { }
       return;
     }
 
@@ -1833,11 +1833,11 @@
             endCall();
           } else if (data.peerCandidates && state.activeCall?.pc) {
             for (const cand of data.peerCandidates) {
-              try { await state.activeCall.pc.addIceCandidate(new RTCIceCandidate(cand)); } catch (e) {}
+              try { await state.activeCall.pc.addIceCandidate(new RTCIceCandidate(cand)); } catch (e) { }
             }
           }
         }
-      } catch (e) {}
+      } catch (e) { }
     }, 1500);
   }
 
@@ -1848,7 +1848,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ call_id: callId, candidate })
       });
-    } catch (e) {}
+    } catch (e) { }
   }
 
   function renderActiveCallModal() {
@@ -1987,7 +1987,7 @@
       if (call.callId) {
         try {
           await fetch(`/api/chat/call/${call.callId}/end`, { method: 'POST' });
-        } catch (e) {}
+        } catch (e) { }
       }
     }
     state.activeCall = null;
@@ -2119,7 +2119,7 @@
 
     // Request notification permission if not yet decided
     if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission().catch(() => {});
+      Notification.requestPermission().catch(() => { });
     }
   }
 
