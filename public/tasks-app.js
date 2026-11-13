@@ -44,9 +44,11 @@
     if (typeof session === 'undefined' || !session) return false;
     if (session.role === 'admin') return true;
     const roles = (session.sourceRoles || []).map(r => String(r).toUpperCase());
-    if (roles.some(r => r.includes('ADMIN') || r.includes('SUPER') || r.includes('SUPPORT') || r.includes('DIRECTOR') || r.includes('CEO'))) return true;
+    if (roles.some(r => r.includes('ADMIN') || r.includes('SUPER') || r.includes('SUPPORT') || r.includes('DIRECTOR') || r.includes('CEO') || r.includes('MANAGER') || r.includes('HEAD') || r.includes('LEAD'))) return true;
     const team = String(session.sourceTeam || session.team || '').toUpperCase();
     if (team.includes('SUPPORT') || team.includes('MANAGEMENT') || team.includes('ADMIN') || team.includes('DIRECTOR') || team.includes('CEO')) return true;
+    const title = String(session.title || session.designation || '').toUpperCase();
+    if (title.includes('MANAGER') || title.includes('HEAD') || title.includes('LEAD') || title.includes('DIRECTOR') || title.includes('CEO') || title.includes('ADMIN')) return true;
     return false;
   }
 
@@ -1518,16 +1520,23 @@
 
             <!-- Approval Gate Warning Banner if pending -->
             ${isApprovalPending ? `
-              <div style="background:#FFFBEB;border:1.5px solid #FCD34D;border-radius:12px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
+              <div style="background:#FFFBEB;border:1.5px solid #FCD34D;border-radius:12px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
                 <div>
-                  <strong style="color:#92400E;font-size:13.5px;">Approval Required Before Execution</strong>
-                  <p style="color:#B45309;font-size:12.5px;margin:2px 0 0 0;">This task is awaiting authorization. Timers and status changes are paused.</p>
+                  <strong style="color:#92400E;font-size:13.5px;">🔒 Approval Required Before Execution</strong>
+                  <p style="color:#B45309;font-size:12.5px;margin:2px 0 0 0;">This task is awaiting managerial authorization. Timers and work execution are blocked until approved.</p>
                 </div>
+                ${admin ? `
                 <div style="display:flex;gap:8px;">
+                  <button class="btn btn-sm" style="background:#EF4444;color:#FFF;border-radius:8px;font-weight:700;" onclick="tmSubmitApproval('${t.id}', 'REJECTED')">
+                    Reject
+                  </button>
                   <button class="btn btn-sm" style="background:#10B981;color:#FFF;border-radius:8px;font-weight:700;" onclick="tmSubmitApproval('${t.id}', 'APPROVED')">
-                    Approve Now
+                    ✓ Approve Now
                   </button>
                 </div>
+                ` : `
+                <span style="font-size:12px;font-weight:700;color:#92400E;background:#FEF3C7;padding:4px 10px;border-radius:6px;">Awaiting Manager Review</span>
+                `}
               </div>
             ` : ''}
 
