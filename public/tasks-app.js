@@ -44,13 +44,14 @@
 
   function isTaskAdmin() {
     if (typeof session === 'undefined' || !session) return false;
-    if (session.role === 'admin') return true;
+    const role = String(session.role || '').toLowerCase();
+    if (role === 'admin' || role.includes('admin') || role.includes('super') || role.includes('ceo') || role.includes('director') || role.includes('manager') || role.includes('lead')) return true;
     const roles = (session.sourceRoles || []).map(r => String(r).toUpperCase());
-    if (roles.some(r => r.includes('ADMIN') || r.includes('SUPER') || r.includes('SUPPORT') || r.includes('DIRECTOR') || r.includes('CEO') || r.includes('MANAGER') || r.includes('HEAD') || r.includes('LEAD'))) return true;
+    if (roles.some(r => r.includes('ADMIN') || r.includes('SUPER') || r.includes('DIRECTOR') || r.includes('CEO') || r.includes('MANAGER') || r.includes('LEAD') || r.includes('HEAD'))) return true;
     const team = String(session.sourceTeam || session.team || '').toUpperCase();
-    if (team.includes('SUPPORT') || team.includes('MANAGEMENT') || team.includes('ADMIN') || team.includes('DIRECTOR') || team.includes('CEO')) return true;
+    if (team.includes('MANAGEMENT') || team.includes('ADMIN') || team.includes('DIRECTOR') || team.includes('CEO')) return true;
     const title = String(session.title || session.designation || '').toUpperCase();
-    if (title.includes('MANAGER') || title.includes('HEAD') || title.includes('LEAD') || title.includes('DIRECTOR') || title.includes('CEO') || title.includes('ADMIN')) return true;
+    if (title.includes('MANAGER') || title.includes('HEAD') || title.includes('LEAD') || title.includes('DIRECTOR') || title.includes('CEO') || title.includes('ADMIN') || title.includes('SUPER')) return true;
     return false;
   }
 
@@ -290,12 +291,10 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           Team Workload Planner
         </button>
-        ` : ''}
         <button class="tm-tab-btn" id="tabBtn-events" onclick="tmSwitchTab('events')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
           Event Projects
         </button>
-        ${admin ? `
         <button class="tm-tab-btn" id="tabBtn-approvals" onclick="tmSwitchTab('approvals')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
           Approvals
@@ -325,14 +324,26 @@
 
   async function tmLoadAll() {
     try {
-      // 1. Fetch capacity, crm workload, active timer, stats, members, and events
+      const admin = isTaskAdmin();
+      const myEmpId = (session && (session.employeeId || session.employee_id)) || null;
+
+      // On default, set assignee filter to logged-in employee
+      if (admin) {
+        if (!tm.assigneeFilter || tm.assigneeFilter === 'all') {
+          tm.assigneeFilter = myEmpId ? String(myEmpId) : 'all';
+        }
+      } else {
+        tm.assigneeFilter = myEmpId ? String(myEmpId) : 'self';
+      }
+
+      // 1. Fetch capacity, crm workload, active timer, stats, members, and events (admin only)
       const [capRes, crmRes, activeTimerRes, statsRes, membersRes, eventsRes] = await Promise.all([
         apiRequest('/api/tasks/capacity/my').catch(() => ({ data: null })),
         apiRequest('/api/tasks/crm-workload/my').catch(() => ({ data: null })),
         apiRequest('/api/tasks/timer/active').catch(() => ({ data: null })),
         apiRequest('/api/tasks/overview-stats').catch(() => ({ data: null })),
         apiRequest('/api/tasks/team-members').catch(() => ({ data: [] })),
-        apiRequest('/api/tasks/events').catch(() => ({ data: [] }))
+        admin ? apiRequest('/api/tasks/events').catch(() => ({ data: [] })) : Promise.resolve({ data: [] })
       ]);
 
       tm.capacity = capRes.data;
@@ -383,11 +394,15 @@
   };
 
   window.tmSwitchTab = async function(tabName) {
+    const admin = isTaskAdmin();
+    if (!admin && (tabName === 'team-capacity' || tabName === 'events' || tabName === 'approvals')) {
+      tabName = 'my-work';
+    }
     tm.currentTab = tabName;
     document.querySelectorAll('.tm-tab-btn').forEach(b => b.classList.remove('active'));
     const btn = $tm(`tabBtn-${tabName}`);
     if (btn) btn.classList.add('active');
-    if (tabName === 'approvals') {
+    if (tabName === 'approvals' && admin) {
       await tmFetchTasks();
     }
     tmRenderTab();
@@ -713,10 +728,17 @@
   // =========================================================================
   function renderBoardTab() {
     const admin = isTaskAdmin();
+    const myEmpId = (session && (session.employeeId || session.employee_id)) || null;
+
     // Filter tasks
     let filtered = tm.tasks;
-    if (admin && tm.assigneeFilter !== 'all') {
-      filtered = filtered.filter(t => String(t.owner_employee_id) === String(tm.assigneeFilter));
+    if (admin) {
+      if (tm.assigneeFilter && tm.assigneeFilter !== 'all') {
+        filtered = filtered.filter(t => String(t.owner_employee_id) === String(tm.assigneeFilter));
+      }
+    } else {
+      // Regular employee can ONLY see their own tasks
+      filtered = filtered.filter(t => Number(t.owner_employee_id) === Number(myEmpId));
     }
     if (tm.teamFilter !== 'all') {
       filtered = filtered.filter(t => String(t.team_id) === String(tm.teamFilter));
@@ -745,10 +767,11 @@
           <input type="text" placeholder="Search tasks or code..." value="${escHtml(tm.searchQuery)}" oninput="tmSetBoardSearch(this.value)" style="padding:7px 14px;border:1px solid var(--border);border-radius:8px;width:220px;">
           
           ${admin ? `
-          <!-- Resource / Staff Selector (Admin & Support Admin) -->
+          <!-- Resource / Staff Selector (Admin, CEO, Manager, Lead, Super Admin, Director) -->
           <select onchange="tmSetAssigneeFilter(this.value)" style="padding:7px 12px;border:1.5px solid var(--cyan);border-radius:8px;font-weight:700;background:#F0F9FF;color:var(--navy);">
-            <option value="all" ${tm.assigneeFilter === 'all' ? 'selected' : ''}>All Resources (${tm.teamMembers.length})</option>
-            ${tm.teamMembers.map(m => `
+            <option value="${myEmpId}" ${String(tm.assigneeFilter) === String(myEmpId) ? 'selected' : ''}>⭐ My Tasks (Default)</option>
+            <option value="all" ${tm.assigneeFilter === 'all' ? 'selected' : ''}>🌐 All Resources (${tm.teamMembers.length})</option>
+            ${tm.teamMembers.filter(m => String(m.employee_id) !== String(myEmpId)).map(m => `
               <option value="${m.employee_id}" ${String(tm.assigneeFilter) === String(m.employee_id) ? 'selected' : ''}>
                 👤 ${escHtml(m.name)} (${escHtml(m.department || 'Staff')})
               </option>
@@ -786,7 +809,7 @@
         </div>
 
         <div style="font-size:13px;color:var(--muted);">
-          Showing <strong>${filtered.length}</strong> tasks ${admin && tm.assigneeFilter !== 'all' ? 'for selected resource' : ''}
+          Showing <strong>${filtered.length}</strong> tasks ${admin ? (tm.assigneeFilter === 'all' ? 'for All Resources' : (String(tm.assigneeFilter) === String(myEmpId) ? 'for You (Default)' : 'for selected resource')) : 'assigned to you'}
         </div>
       </div>
 

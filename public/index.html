@@ -1375,7 +1375,8 @@ td .t-url{
 
 <div id="toast" class="toast" role="status"></div>
 
-<script src="/tasks-app.js?v=20261113_07"></script>
+<script src="/tasks-app.js?v=20261113_08"></script>
+<script src="/messenger-app.js?v=20261113_01"></script>
 <script>
 /* =====================================================================
    MYPRENEUR CONNECT — CONFIGURATION
@@ -1671,6 +1672,7 @@ function showLogin(){
   $('#loginPage').hidden = false;
   $('#lp').value = '';
   setTimeout(() => $('#lu').focus(), 50);
+  if (window.MessengerApp) window.MessengerApp.destroy();
 }
 let notifiedIds = new Set();
 function requestDesktopNotificationPermission(){
@@ -1698,6 +1700,9 @@ function showApp(){
   paintProfile();
   renderSidebar();
   render();
+  if (window.MessengerApp && session) {
+    window.MessengerApp.init(session);
+  }
 }
 /* Header avatar + "signed in as" block reflect the logged-in account */
 function paintProfile(){
@@ -3194,7 +3199,7 @@ function renderContactsContent() {
           </thead>
           <tbody>
             ${list.map(c => `
-              <tr style="border-bottom:1px solid #F1F5F9;transition:background 0.1s;" onmouseover="this.style.background='#F8FAFC'" onmouseout="this.style.background=''">
+              <tr data-emp-id="${c.id}" style="border-bottom:1px solid #F1F5F9;transition:background 0.1s;" onmouseover="this.style.background='#F8FAFC'" onmouseout="this.style.background=''">
                 <td style="padding:12px 18px;">
                   <div style="display:flex;align-items:center;gap:12px;">
                     <div style="width:36px;height:36px;border-radius:10px;background:${getAvatarBg(c.name)};display:flex;align-items:center;justify-content:center;color:#FFF;font-weight:700;font-size:13px;flex-shrink:0;">
@@ -3224,9 +3229,20 @@ function renderContactsContent() {
                   </div>
                 </td>
                 <td style="padding:12px 18px;text-align:right;">
-                  <button class="contact-action-btn primary" onclick="openContactChatModal(${c.id})">
-                    💬 Connect / Share
-                  </button>
+                  <div style="display:flex;align-items:center;justify-content:flex-end;gap:5px;">
+                    <button class="contact-action-btn primary" onclick="window.MessengerApp.startDirectChatWithEmployee(${c.id})" title="Messenger Chat">
+                      💬 Chat
+                    </button>
+                    <button class="contact-action-btn" onclick="window.MessengerApp.startCallWithEmployee(${c.id}, 'AUDIO')" title="Voice Call" style="padding:6px 8px;">
+                      📞
+                    </button>
+                    <button class="contact-action-btn" onclick="window.MessengerApp.startCallWithEmployee(${c.id}, 'VIDEO')" title="Video Call" style="padding:6px 8px;">
+                      📹
+                    </button>
+                    <button class="contact-action-btn" onclick="openContactChatModal(${c.id})" title="Share Link or Note" style="padding:6px 8px;">
+                      🔗
+                    </button>
+                  </div>
                 </td>
               </tr>
             `).join('')}

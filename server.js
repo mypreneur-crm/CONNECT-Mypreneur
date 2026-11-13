@@ -14,6 +14,8 @@ const { LocalFileStore } = require('./lib/file-store');
 const { initializeSchema } = require('./lib/schema');
 const { DatabaseAuthProvider, hashScryptPassword } = require('./lib/auth-provider');
 const { handleTaskApi } = require('./lib/tasks/task-routes');
+const { ChatService } = require('./lib/chat/chat-service');
+const { registerChatRoutes } = require('./lib/chat/chat-routes');
 
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -30,7 +32,7 @@ const LOGIN_BLOCK_MS = 15 * 60 * 1000;
 const MAX_LOGIN_FAILURES = 8;
 const CATEGORIES = ['Policies', 'Sales Team', 'Operations Team', 'HR Team', 'Digital Team'];
 const EVENT_TYPES = ['Online', 'Offline', 'Meeting'];
-const FILE_EXTENSIONS = new Set(['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.csv', '.png', '.jpg', '.jpeg']);
+const FILE_EXTENSIONS = new Set(['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.csv', '.png', '.jpg', '.jpeg', '.webp', '.gif', '.zip']);
 
 let db;
 let fileStore;
@@ -38,6 +40,8 @@ let authProvider;
 let dummyPasswordHash;
 let server;
 let sessionSecret;
+let chatService;
+let handleChatApi;
 const loginAttempts = new Map();
 const presenceMap = new Map();
 let shuttingDown = false;
@@ -237,7 +241,7 @@ function securityHeaders(res, isApi = false) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=()');
   res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
   if (NODE_ENV === 'production') res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   if (isApi) res.setHeader('Cache-Control', 'no-store');
@@ -826,6 +830,13 @@ async function handleApi(req, res, url) {
     return await handleTaskApi(req, res, url, auth, db);
   }
 
+  if (pathname.startsWith('/api/chat/')) {
+    if (handleChatApi) {
+      const handled = await handleChatApi(req, res, url);
+      if (handled) return;
+    }
+  }
+
   if (method === 'POST' && pathname === '/api/links') {
     const auth = await requireAuth(req, res, { csrf: true });
     if (!auth) return;
@@ -1209,6 +1220,7 @@ async function handleApi(req, res, url) {
     if (!auth) return;
     if (auth.user && auth.user.employeeId) {
       presenceMap.set(Number(auth.user.employeeId), Date.now());
+      if (chatService) chatService.updatePresence(auth.user.employeeId, 'ONLINE');
     }
     return sendJson(res, 200, { ok: true, timestamp: Date.now() });
   }
@@ -1287,13 +1299,15 @@ async function handleApi(req, res, url) {
     }
 
     const now = Date.now();
+    const chatPresence = chatService ? await chatService.getAllPresence() : {};
     const stats = { total: employees.length, online: 0, away: 0, on_leave: 0, offline: 0 };
 
     const contacts = employees.map(emp => {
       const empId = Number(emp.employee_id);
       const fullName = [emp.first_name, emp.last_name].filter(Boolean).join(' ').trim() || emp.username || `Employee #${empId}`;
       const empCode = emp.employee_code || `MYP-${String(empId).padStart(4, '0')}`;
-      const lastSeenMs = presenceMap.get(empId) || (emp.user_id ? presenceMap.get(Number(emp.user_id)) : 0);
+      const cp = chatPresence[empId];
+      const lastSeenMs = cp ? cp.last_heartbeat : (presenceMap.get(empId) || (emp.user_id ? presenceMap.get(Number(emp.user_id)) : 0));
       const isTimerActive = timerSet.has(empId);
       const leaveInfo = leaveMap.get(empId);
       const attInfo = attMap.get(empId);
@@ -1307,12 +1321,22 @@ async function handleApi(req, res, url) {
         statusLabel = 'On Leave';
         statusNote = leaveInfo.leave_duration === 'HALF_DAY' ? 'Half Day Leave' : (leaveInfo.reason ? `Leave: ${leaveInfo.reason}` : 'Approved Leave');
         stats.on_leave++;
-      } else if (isTimerActive || (lastSeenMs && (now - lastSeenMs < 5 * 60 * 1000))) {
+      } else if (cp && cp.status === 'ONLINE') {
+        status = 'ONLINE';
+        statusLabel = 'Online';
+        statusNote = isTimerActive ? 'Working on Task' : (cp.custom_status || 'Active in Portal');
+        stats.online++;
+      } else if (cp && cp.status === 'AWAY') {
+        status = 'AWAY';
+        statusLabel = 'Away';
+        statusNote = cp.custom_status || 'Away';
+        stats.away++;
+      } else if (isTimerActive || (lastSeenMs && (now - lastSeenMs < 2 * 60 * 1000))) {
         status = 'ONLINE';
         statusLabel = 'Online';
         statusNote = isTimerActive ? 'Working on Task' : 'Active in Portal';
         stats.online++;
-      } else if ((lastSeenMs && (now - lastSeenMs < 30 * 60 * 1000)) || (attInfo && attInfo.check_in && !attInfo.check_out)) {
+      } else if ((lastSeenMs && (now - lastSeenMs < 10 * 60 * 1000)) || (attInfo && attInfo.check_in && !attInfo.check_out)) {
         status = 'AWAY';
         statusLabel = 'Away';
         statusNote = attInfo ? 'Checked in today' : 'Away';
@@ -1912,7 +1936,7 @@ async function serveStatic(req, res, url) {
   }
 
   securityHeaders(res, false);
-  res.setHeader('Content-Security-Policy', "default-src 'self'; connect-src 'self'; img-src 'self' data: blob:; font-src 'self' https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'");
+  res.setHeader('Content-Security-Policy', "default-src 'self'; connect-src 'self' wss:; media-src 'self' blob: data:; img-src 'self' data: blob:; font-src 'self' https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'");
   res.writeHead(200, {
     'Content-Type': staticMime(file),
     'Content-Length': stat.size,
@@ -1939,6 +1963,8 @@ async function start() {
   }
   authProvider = new DatabaseAuthProvider(db);
   dummyPasswordHash = await hashScryptPassword(randomToken(24));
+  chatService = new ChatService(db, fileStore);
+  handleChatApi = registerChatRoutes({ db, fileStore, chatService, requireAuth, sendJson, sendError, readJson, cleanText, securityHeaders });
 
 
   server = http.createServer(async (req, res) => {
