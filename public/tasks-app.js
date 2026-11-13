@@ -1220,12 +1220,12 @@
                 return `
                 <tr style="border-bottom:1px solid #F1F5F9;transition:background 0.15s ease;" onmouseover="this.style.background='#F8FAFC'" onmouseout="this.style.background=''">
                   <td style="padding:12px 14px;white-space:nowrap;">
-                    <span class="task-code" style="font-weight:700;cursor:pointer;" onclick="tmOpenEventWorkspace('${ev.id}')" title="Click to view workspace">
+                    <span class="task-code" style="font-weight:800;font-size:12.5px;background:#EEF2FF;color:#4338CA;border:1.5px solid #C7D2FE;padding:4px 8px;border-radius:6px;cursor:pointer;" onclick="tmOpenEventWorkspace('${ev.id}')" title="Click to view workspace">
                       ${escHtml(ev.event_code)}
                     </span>
                   </td>
                   <td style="padding:12px 14px;">
-                    <div style="font-weight:700;color:var(--navy);cursor:pointer;line-height:1.3;" onclick="tmOpenEventWorkspace('${ev.id}')">
+                    <div style="font-weight:700;color:var(--navy);font-size:14px;cursor:pointer;line-height:1.3;" onclick="tmOpenEventWorkspace('${ev.id}')">
                       ${escHtml(ev.event_name)}
                     </div>
                   </td>
@@ -1613,9 +1613,17 @@
           <!-- Modal Header with full CRM Details -->
           <div style="display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:14px;border-bottom:1px solid var(--border);">
             <div style="flex:1;">
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
-                <span class="task-code" style="font-size:12px;font-weight:700;">${escHtml(ev.event_code)}</span>
-                <span style="font-size:11px;background:#EBF7FF;color:#0284C7;padding:3px 8px;border-radius:6px;font-weight:700;">
+              <div style="font-size:11.5px;font-weight:800;color:#4338CA;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;display:flex;align-items:center;gap:6px;">
+                <span>🚀 Event Project Workspace</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap;">
+                <span class="task-code" style="font-size:14px;font-weight:800;background:#EEF2FF;color:#4338CA;border:1.5px solid #C7D2FE;padding:4px 10px;border-radius:6px;">
+                  ${escHtml(ev.event_code)}
+                </span>
+                <h2 style="font-size:20px;font-weight:800;color:var(--navy);margin:0;line-height:1.2;">
+                  ${escHtml(ev.event_name)}
+                </h2>
+                <span style="font-size:11.5px;background:#EBF7FF;color:#0284C7;padding:3px 8px;border-radius:6px;font-weight:700;">
                   ${escHtml(ev.event_type || 'General')}
                 </span>
                 <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:${(ev.status || '').toUpperCase() === 'ACTIVE' ? '#ECFDF5' : '#F1F5F9'};color:${(ev.status || '').toUpperCase() === 'ACTIVE' ? '#065F46' : '#475569'};">
@@ -1626,7 +1634,6 @@
                   CRM ID #${ev.crm_event_id}
                 </span>` : ''}
               </div>
-              <h2 style="font-size:18px;font-weight:800;color:var(--navy);margin:0 0 6px 0;">${escHtml(ev.event_name)}</h2>
               <div style="display:flex;flex-wrap:wrap;gap:14px;font-size:12.5px;color:var(--navy);background:#F8FAFC;padding:8px 12px;border-radius:8px;border:1px solid #E2E8F0;">
                 <div>📍 Location: <strong>${escHtml(ev.location && ev.location !== '-' ? ev.location : '—')}</strong></div>
                 <div>📅 Start Date: <strong>${formatEventDate(ev.start_date || ev.event_date)}</strong></div>
@@ -1660,7 +1667,7 @@
           <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
             <div style="display:flex;gap:8px;">
               <button class="btn btn-sm btn-primary" onclick="tmOpenCreateTaskForEvent('${ev.id}', '${escHtml(ev.event_code)}')" style="background:var(--cyan);color:#0F0147;font-weight:800;border-radius:8px;">
-                + Add Task to Event
+                + Add Task to [${escHtml(ev.event_code)}]
               </button>
               <button class="btn btn-sm" style="background:#EBF7FF;color:#0284C7;border:1px solid #BAE6FD;border-radius:8px;font-weight:700;" onclick="tmScaffoldEvent('${ev.id}')">
                 ⚡ Auto-Generate Team Tasks

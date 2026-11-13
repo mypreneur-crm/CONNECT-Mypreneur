@@ -1344,7 +1344,7 @@ td .t-url{
 
 <div id="toast" class="toast" role="status"></div>
 
-<script src="/tasks-app.js?v=20261112_04"></script>
+<script src="/tasks-app.js?v=20261113_03"></script>
 <script>
 /* =====================================================================
    MYPRENEUR CONNECT — CONFIGURATION
@@ -1375,7 +1375,6 @@ const MENU = [
   { id:"eoq",              label:"Employee of the Quarter", icon:"trophy" },
   { id:"announcements",    label:"Announcements",    icon:"megaphone" },
   { id:"policies",      label:"Policies",         icon:"shield",   category:"Policies" },
-  { id:"events",        label:"Events",           icon:"calendar" },
   { id:"sales",         label:"Sales Team",       icon:"chart",    category:"Sales Team" },
   { id:"operations",    label:"Operations Team",  icon:"cog",      category:"Operations Team" },
   { id:"hr",            label:"HR Team",          icon:"users",    category:"HR Team" },
@@ -1777,7 +1776,11 @@ function render(){
   }
   else if (route === 'add') view.innerHTML = viewAdd();
   else if (route === 'manage') view.innerHTML = viewManage();
-  else if (route === 'events') view.innerHTML = viewEvents();
+  else if (route === 'events') {
+    location.hash = 'tasks';
+    setTimeout(() => { if (window.tmSwitchTab) window.tmSwitchTab('events'); }, 120);
+    return;
+  }
   else if (route === 'announcements') view.innerHTML = viewAnnouncements();
   else if (route === 'growth') view.innerHTML = viewGrowth();
   else if (route === 'eoq') {
@@ -1850,8 +1853,8 @@ function viewDashboard(){
       <button class="qcard blue" data-go="policies">
         <div class="qicon">${ic('shield')}</div><div><b>Policies</b><small>Company policies and guidelines</small></div><span class="qarr">${ic('chevr')}</span>
       </button>
-      <button class="qcard green" data-go="events">
-        <div class="qicon">${ic('calendar')}</div><div><b>Events</b><small>Upcoming events and registrations</small></div><span class="qarr">${ic('chevr')}</span>
+      <button class="qcard green" onclick="location.hash='tasks'; setTimeout(() => { if (window.tmSwitchTab) window.tmSwitchTab('events'); }, 120);">
+        <div class="qicon">${ic('calendar')}</div><div><b>Event Projects</b><small>CRM events &amp; workstream tasks</small></div><span class="qarr">${ic('chevr')}</span>
       </button>
       <button class="qcard purple" data-go="announcements">
         <div class="qicon">${ic('megaphone')}</div><div><b>Announcements</b><small>Latest company updates and notices</small></div><span class="qarr">${ic('chevr')}</span>
@@ -1884,7 +1887,7 @@ function viewDashboard(){
     <div class="panel">
       <div class="panel-head">
         <h3 class="panel-title">Upcoming Events</h3>
-        <button class="view-all" data-go="events">View All ${ic('chevr','width:13px;height:13px')}</button>
+        <button class="view-all" onclick="location.hash='tasks'; setTimeout(() => { if (window.tmSwitchTab) window.tmSwitchTab('events'); }, 120);">View All ${ic('chevr','width:13px;height:13px')}</button>
       </div>
       <div class="panel-body">${eventsHtml}</div>
     </div>
