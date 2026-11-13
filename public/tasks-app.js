@@ -183,13 +183,14 @@
 
   async function tmLoadAll() {
     try {
-      // 1. Fetch capacity, crm workload, and active timer
-      const [capRes, crmRes, activeTimerRes, statsRes, membersRes] = await Promise.all([
+      // 1. Fetch capacity, crm workload, active timer, stats, members, and events
+      const [capRes, crmRes, activeTimerRes, statsRes, membersRes, eventsRes] = await Promise.all([
         apiRequest('/api/tasks/capacity/my').catch(() => ({ data: null })),
         apiRequest('/api/tasks/crm-workload/my').catch(() => ({ data: null })),
         apiRequest('/api/tasks/timer/active').catch(() => ({ data: null })),
         apiRequest('/api/tasks/overview-stats').catch(() => ({ data: null })),
-        apiRequest('/api/tasks/team-members').catch(() => ({ data: [] }))
+        apiRequest('/api/tasks/team-members').catch(() => ({ data: [] })),
+        apiRequest('/api/tasks/events').catch(() => ({ data: [] }))
       ]);
 
       tm.capacity = capRes.data;
@@ -197,6 +198,7 @@
       tm.activeTimer = activeTimerRes.data;
       tm.stats = statsRes.data;
       tm.teamMembers = membersRes.data || [];
+      tm.events = eventsRes.data || [];
 
       // Update timer banner
       updateTimerBanner();
@@ -1049,15 +1051,21 @@
         <div>
           <h3 style="font-size:16px;font-weight:700;color:var(--navy);">Event Project Workspaces</h3>
           <p style="font-size:13px;color:var(--muted);margin:2px 0 0 0;">
-            Multi-team parallel allocations for FGS, FGC, Webinars, and Academy sessions.
+            CRM Event Projects (FGC26, FGS, Webinars, Workshops) with daily workload allocations across Sales, Telecallers, Digital Marketing, and Operations.
           </p>
         </div>
-        <button class="btn btn-primary" onclick="tmOpenCreateEventModal()" style="background:var(--navy);color:#FFF;">
-          + New Event Project
-        </button>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <button class="btn btn-secondary btn-sm" onclick="tmSyncCrmEvents()" style="font-weight:700;display:flex;align-items:center;gap:6px;" title="Re-sync latest events and lead pipeline from CRM">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px;"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+            Sync CRM Events
+          </button>
+          <button class="btn btn-primary btn-sm" onclick="tmOpenCreateEventModal()" style="background:var(--navy);color:#FFF;font-weight:700;">
+            + New Event Project
+          </button>
+        </div>
       </div>
 
-      <div id="tmEventsGrid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(340px, 1fr));gap:16px;">
+      <div id="tmEventsGrid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(360px, 1fr));gap:18px;">
         <div style="padding:30px;color:var(--muted);text-align:center;grid-column:1/-1;">Loading events...</div>
       </div>
     </div>
@@ -1072,54 +1080,344 @@
       tm.events = res.data || [];
 
       if (tm.events.length === 0) {
-        container.innerHTML = `<div style="padding:40px;text-align:center;grid-column:1/-1;color:var(--muted);">No event project workspaces found. Click "+ New Event Project" to create one.</div>`;
+        container.innerHTML = `<div style="padding:40px;text-align:center;grid-column:1/-1;color:var(--muted);">No event project workspaces found. Click "+ New Event Project" or "Sync CRM Events".</div>`;
         return;
       }
 
       container.innerHTML = tm.events.map(ev => {
         const total = ev.total_tasks || 0;
         const comp = ev.completed_tasks || 0;
-        const pct = total > 0 ? Math.round((comp / total) * 100) : 0;
+        const pct = ev.progress_pct || 0;
+        const leads = ev.lead_pipeline_count || 0;
+        const progType = ev.program_type || 'EVENT';
+        const isOffline = ev.delivery_mode === 'OFFLINE';
 
         return `
-        <div class="card" style="padding:20px;background:#FFF;border-radius:16px;border:1px solid var(--border);display:flex;flex-direction:column;gap:14px;">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-            <div>
-              <span style="font-size:11px;background:#EBF7FF;color:#0284C7;padding:3px 8px;border-radius:4px;font-weight:700;text-transform:uppercase;">
-                ${escHtml(ev.event_type)}
-              </span>
-              <strong style="font-size:15px;color:var(--navy);display:block;margin-top:6px;">${escHtml(ev.name)}</strong>
+        <div class="card" style="padding:22px;background:#FFF;border-radius:16px;border:1px solid var(--border);display:flex;flex-direction:column;gap:14px;box-shadow:0 2px 10px rgba(0,0,0,0.02);position:relative;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+            <div style="flex:1;">
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
+                <span style="font-size:11px;background:#EBF7FF;color:#0284C7;padding:2px 8px;border-radius:4px;font-weight:700;">
+                  ${escHtml(progType)}
+                </span>
+                <span style="font-size:11px;background:${isOffline ? '#FEF3C7' : '#ECFDF5'};color:${isOffline ? '#92400E' : '#065F46'};padding:2px 8px;border-radius:4px;font-weight:700;">
+                  ${isOffline ? '📍 Offline' : '🌐 Online'}
+                </span>
+                ${ev.crm_event_id ? `
+                <span style="font-size:10.5px;background:#F1F5F9;color:var(--muted);padding:2px 6px;border-radius:4px;font-weight:600;" title="Synced from CRM Event ID #${ev.crm_event_id}">
+                  CRM #${ev.crm_event_id}
+                </span>
+                ` : ''}
+              </div>
+              <strong style="font-size:16px;color:var(--navy);display:block;line-height:1.3;">
+                ${escHtml(ev.event_name)}
+              </strong>
+              <div style="font-size:12px;color:var(--muted);margin-top:4px;">
+                Code: <strong>${escHtml(ev.event_code)}</strong> · Location: <strong>${escHtml(ev.venue_or_link || 'Location TBD')}</strong>
+              </div>
             </div>
-            <span style="font-size:12px;font-weight:700;color:var(--muted);">${pct}% Done</span>
+            <span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;background:${ev.status === 'COMPLETED' ? '#ECFDF5' : '#EBF7FF'};color:${ev.status === 'COMPLETED' ? '#065F46' : '#0284C7'};">
+              ${escHtml(ev.status)}
+            </span>
+          </div>
+
+          <!-- Highlight metrics row -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;background:#F8FAFC;padding:10px 14px;border-radius:10px;border:1px solid #E2E8F0;">
+            <div>
+              <span style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600;display:block;">Lead Pipeline</span>
+              <strong style="font-size:15px;color:#0284C7;">
+                👥 ${leads} Leads
+              </strong>
+            </div>
+            <div>
+              <span style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600;display:block;">Task Progress</span>
+              <strong style="font-size:15px;color:#059669;">
+                📋 ${comp} / ${total} <span style="font-size:11px;font-weight:600;color:var(--muted);">(${pct}%)</span>
+              </strong>
+            </div>
           </div>
 
           <!-- Progress Bar -->
-          <div style="background:#F1F5F9;border-radius:6px;height:8px;overflow:hidden;">
+          <div style="background:#E2E8F0;border-radius:6px;height:7px;overflow:hidden;">
             <div style="background:#10B981;width:${pct}%;height:100%;"></div>
           </div>
 
-          <div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;color:var(--muted);">
-            <span>Date: <strong>${ev.start_date ? new Date(ev.start_date).toLocaleDateString() : 'TBD'}</strong></span>
-            <span>Tasks: <strong>${comp} / ${total}</strong></span>
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted);">
+            <span>📅 Event Date: <strong>${ev.event_date ? new Date(ev.event_date).toLocaleDateString() : 'TBD'}</strong></span>
           </div>
 
-          <button class="btn btn-secondary btn-sm" style="width:100%;margin-top:4px;" onclick="tmViewEventTasks('${ev.id}')">
-            View Workstreams &amp; Tasks
-          </button>
+          <div style="display:flex;gap:8px;margin-top:2px;">
+            <button class="btn btn-secondary btn-sm" style="flex:1;font-weight:700;" onclick="tmOpenEventWorkspace('${ev.id}')">
+              View Workstreams &amp; Tasks &rarr;
+            </button>
+            ${total === 0 ? `
+            <button class="btn btn-sm" style="background:#EBF7FF;color:#0284C7;border:1px solid #BAE6FD;border-radius:8px;font-weight:700;" onclick="tmScaffoldEvent('${ev.id}')" title="Auto-generate multi-team workstreams">
+              ⚡ Scaffold
+            </button>
+            ` : ''}
+          </div>
         </div>
         `;
       }).join('');
     } catch (e) {
       console.error('Error loading events:', e);
-      if (container) container.innerHTML = `<div style="color:#EF4444;grid-column:1/-1;">Failed to load events.</div>`;
+      if (container) container.innerHTML = `<div style="color:#EF4444;grid-column:1/-1;">Failed to load events: ${escHtml(e.message)}</div>`;
     }
   }
 
-  window.tmViewEventTasks = function(eventId) {
+  window.tmSyncCrmEvents = async function() {
+    try {
+      toast('Syncing events from CRM...');
+      await apiRequest('/api/tasks/events/sync', { method: 'POST' });
+      toast('CRM events synchronized successfully');
+      await tmLoadEvents();
+    } catch (e) {
+      alert('Error syncing CRM events: ' + e.message);
+    }
+  };
+
+  window.tmScaffoldEvent = async function(eventId) {
+    if (!confirm('Auto-generate standard multi-team workstreams (Sales/Telecalling, Marketing, Operations, Support) for this event?')) return;
+    try {
+      const res = await apiRequest(`/api/tasks/events/${eventId}/scaffold-workstreams`, { method: 'POST' });
+      toast(`Created ${(res.data || []).length} cross-team workstream tasks!`);
+      await tmFetchTasks();
+      await tmLoadEvents();
+      if ($tm('tmEventWorkspaceModal')) {
+        await tmOpenEventWorkspace(eventId);
+      }
+    } catch (e) {
+      alert('Error scaffolding event tasks: ' + e.message);
+    }
+  };
+
+  window.tmFilterBoardByEvent = function(eventId, eventCode) {
+    tmCloseModal('tmEventWorkspaceModal');
     tmSwitchTab('board');
-    // Filter tasks by event
-    let filtered = tm.tasks.filter(t => t.event_id === eventId);
-    toast(`Filtered to event tasks (${filtered.length})`);
+    const searchInput = $tm('tmSearchInput');
+    if (searchInput) {
+      searchInput.value = eventCode || '';
+      tmApplyFilters();
+    }
+    toast(`Viewing board filtered to ${eventCode}`);
+  };
+
+  window.tmOpenCreateTaskForEvent = function(eventId, eventCode) {
+    tmCloseModal('tmEventWorkspaceModal');
+    tmOpenTaskFormModal({
+      event_id: eventId,
+      title: eventCode ? `[${eventCode}] ` : ''
+    });
+  };
+
+  window.tmOpenCreateTaskModal = function(defaults = {}) {
+    return tmOpenTaskFormModal(defaults);
+  };
+
+  window.tmOpenEventWorkspace = async function(eventId) {
+    try {
+      const res = await apiRequest(`/api/tasks/events/${eventId}`);
+      const ev = res.data;
+      if (!ev) return;
+
+      const tb = ev.teamsBreakdown || { sales: [], digital: [], operations: [], support: [], other: [] };
+      const tasks = ev.tasks || [];
+      const total = tasks.length;
+      const comp = tasks.filter(t => t.status === 'COMPLETED').length;
+      const pct = total > 0 ? Math.round((comp / total) * 100) : 0;
+
+      const renderWorkstreamTaskRow = (t) => {
+        const isTimerRunning = tm.activeTimer && tm.activeTimer.task_id === t.id;
+        return `
+        <div style="background:#FFF;border:1px solid #E2E8F0;border-radius:10px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+          <div style="flex:1;min-width:240px;">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
+              <span class="task-code">${escHtml(t.task_code)}</span>
+              <span class="badge-priority ${t.priority.toLowerCase()}">${escHtml(t.priority)}</span>
+              <span style="font-size:11px;font-weight:700;color:var(--muted);">${formatMins(t.actual_minutes || 0)} logged</span>
+            </div>
+            <strong style="font-size:14px;color:var(--navy);display:block;cursor:pointer;" onclick="tmOpenTaskDetails('${t.id}')">
+              ${escHtml(t.title)}
+            </strong>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px;">
+              👤 Assignee: <strong>${escHtml(t.owner_name || 'Unassigned')}</strong> · Due: <strong>${t.due_date ? new Date(t.due_date).toLocaleDateString() : 'No date'}</strong>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <select onchange="tmChangeTaskStatus('${t.id}', this.value); tmOpenEventWorkspace('${eventId}');" style="font-size:12px;font-weight:700;border:1px solid #CBD5E1;border-radius:6px;padding:3px 6px;">
+              <option value="OPEN" ${t.status === 'OPEN' ? 'selected' : ''}>Open</option>
+              <option value="IN_PROGRESS" ${t.status === 'IN_PROGRESS' ? 'selected' : ''}>In Progress</option>
+              <option value="REVIEW" ${t.status === 'REVIEW' ? 'selected' : ''}>In Review</option>
+              <option value="COMPLETED" ${t.status === 'COMPLETED' ? 'selected' : ''}>Completed</option>
+            </select>
+            ${isTimerRunning ? `
+            <button class="btn btn-sm btn-timer active" onclick="tmStopTimer('${t.id}')" title="Stop Timer">
+              ⏹️ Stop (${formatMins(tm.activeTimer.duration_minutes || 0)})
+            </button>
+            ` : `
+            <button class="btn btn-sm btn-timer" onclick="tmStartTimer('${t.id}')" title="Start Timer">
+              ▶️ Start
+            </button>
+            `}
+            <button class="btn btn-sm btn-secondary" onclick="tmOpenTaskDetails('${t.id}')" title="View details">
+              Inspect &rarr;
+            </button>
+          </div>
+        </div>
+        `;
+      };
+
+      const anchor = $tm('tmModalAnchor');
+      anchor.innerHTML = `
+      <div class="dup-modal-overlay" id="tmEventWorkspaceModal" style="display:flex;">
+        <div class="dup-modal-box" style="max-width:880px;max-height:90vh;display:flex;flex-direction:column;">
+          <!-- Modal Header -->
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:14px;border-bottom:1px solid var(--border);">
+            <div>
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                <span style="font-size:11px;background:#EBF7FF;color:#0284C7;padding:3px 8px;border-radius:4px;font-weight:700;">
+                  ${escHtml(ev.program_type || 'EVENT')}
+                </span>
+                <span class="task-code" style="font-size:12px;">${escHtml(ev.event_code)}</span>
+                <span style="font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:999px;background:#ECFDF5;color:#065F46;">
+                  ${escHtml(ev.status)}
+                </span>
+              </div>
+              <h2 style="font-size:18px;font-weight:800;color:var(--navy);margin:0;">${escHtml(ev.event_name)}</h2>
+              <div style="font-size:12.5px;color:var(--muted);margin-top:4px;">
+                📍 ${escHtml(ev.venue_or_link || 'Location TBD')} · 📅 ${ev.event_date ? new Date(ev.event_date).toLocaleDateString() : 'TBD'} · Delivery: <strong>${escHtml(ev.delivery_mode || 'OFFLINE')}</strong>
+              </div>
+            </div>
+            <button class="btn" onclick="tmCloseModal('tmEventWorkspaceModal')" style="font-size:22px;color:var(--muted);">&times;</button>
+          </div>
+
+          <!-- CRM Lead Pipeline & Progress Banner -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0;background:#F0FDF4;border:1.5px solid #86EFAC;border-radius:12px;padding:12px 18px;">
+            <div>
+              <span style="font-size:11px;color:#166534;font-weight:700;text-transform:uppercase;">CRM Lead Pipeline</span>
+              <div style="font-size:20px;font-weight:800;color:#15803D;margin-top:2px;">
+                👥 ${ev.lead_pipeline_count} Active Leads
+              </div>
+              <span style="font-size:11.5px;color:#166534;">Assigned to Sales &amp; Telecallers for routine follow-ups</span>
+            </div>
+            <div>
+              <span style="font-size:11px;color:#166534;font-weight:700;text-transform:uppercase;">Workstream Execution</span>
+              <div style="font-size:20px;font-weight:800;color:#15803D;margin-top:2px;">
+                📋 ${comp} / ${total} Tasks <span style="font-size:13px;font-weight:600;">(${pct}%)</span>
+              </div>
+              <div style="background:#DCFCE7;border-radius:6px;height:6px;margin-top:6px;overflow:hidden;">
+                <div style="background:#16A34A;width:${pct}%;height:100%;"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick Action Bar -->
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+            <div style="display:flex;gap:8px;">
+              <button class="btn btn-sm btn-primary" onclick="tmOpenCreateTaskForEvent('${ev.id}', '${escHtml(ev.event_code)}')" style="background:var(--cyan);color:#0F0147;font-weight:800;border-radius:8px;">
+                + Add Task to Event
+              </button>
+              <button class="btn btn-sm" style="background:#EBF7FF;color:#0284C7;border:1px solid #BAE6FD;border-radius:8px;font-weight:700;" onclick="tmScaffoldEvent('${ev.id}')">
+                ⚡ Auto-Generate Team Tasks
+              </button>
+            </div>
+            <button class="btn btn-sm btn-secondary" onclick="tmFilterBoardByEvent('${ev.id}', '${escHtml(ev.event_code)}')">
+              View on Kanban Board &rarr;
+            </button>
+          </div>
+
+          <!-- Multi-Team Workstreams List -->
+          <div style="overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:16px;padding-right:4px;">
+            <!-- 1. Sales & Telecaller Workstream -->
+            <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;padding:14px 16px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <span style="font-size:16px;">📞</span>
+                  <strong style="font-size:14px;color:var(--navy);">Sales &amp; Telecalling Workstream</strong>
+                  <span class="badge-pill" style="font-size:11px;">${tb.sales.length} Tasks</span>
+                </div>
+                <span style="font-size:12px;color:var(--muted);">Routine daily calling &amp; registrations</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px;">
+                ${tb.sales.length > 0 ? tb.sales.map(renderWorkstreamTaskRow).join('') : `
+                  <div style="font-size:12.5px;color:var(--muted);padding:8px 0;">No sales/telecaller tasks created yet. Click "+ Add Task to Event" or "⚡ Auto-Generate".</div>
+                `}
+              </div>
+            </div>
+
+            <!-- 2. Digital Marketing Workstream -->
+            <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;padding:14px 16px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <span style="font-size:16px;">🎨</span>
+                  <strong style="font-size:14px;color:var(--navy);">Digital Marketing Workstream</strong>
+                  <span class="badge-pill" style="font-size:11px;">${tb.digital.length} Tasks</span>
+                </div>
+                <span style="font-size:12px;color:var(--muted);">Ad creatives, videos, WhatsApp &amp; emailers</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px;">
+                ${tb.digital.length > 0 ? tb.digital.map(renderWorkstreamTaskRow).join('') : `
+                  <div style="font-size:12.5px;color:var(--muted);padding:8px 0;">No marketing tasks created yet. Click "+ Add Task to Event" or "⚡ Auto-Generate".</div>
+                `}
+              </div>
+            </div>
+
+            <!-- 3. Operations & Logistics Workstream -->
+            <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;padding:14px 16px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <span style="font-size:16px;">⚙️</span>
+                  <strong style="font-size:14px;color:var(--navy);">Operations &amp; Logistics Workstream</strong>
+                  <span class="badge-pill" style="font-size:11px;">${tb.operations.length} Tasks</span>
+                </div>
+                <span style="font-size:12px;color:var(--muted);">Venue booking, AV, stage, equipment &amp; vessels</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px;">
+                ${tb.operations.length > 0 ? tb.operations.map(renderWorkstreamTaskRow).join('') : `
+                  <div style="font-size:12.5px;color:var(--muted);padding:8px 0;">No operations tasks created yet. Click "+ Add Task to Event" or "⚡ Auto-Generate".</div>
+                `}
+              </div>
+            </div>
+
+            <!-- 4. Support & Registration Workstream -->
+            <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;padding:14px 16px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <span style="font-size:16px;">🏷️</span>
+                  <strong style="font-size:14px;color:var(--navy);">Support &amp; Delegate Check-in Workstream</strong>
+                  <span class="badge-pill" style="font-size:11px;">${tb.support.length} Tasks</span>
+                </div>
+                <span style="font-size:12px;color:var(--muted);">Badges, kits, delegate check-in &amp; help desk</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px;">
+                ${tb.support.length > 0 ? tb.support.map(renderWorkstreamTaskRow).join('') : `
+                  <div style="font-size:12.5px;color:var(--muted);padding:8px 0;">No support tasks created yet. Click "+ Add Task to Event" or "⚡ Auto-Generate".</div>
+                `}
+              </div>
+            </div>
+
+            ${tb.other.length > 0 ? `
+            <!-- 5. Additional Workstreams -->
+            <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;padding:14px 16px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <span style="font-size:16px;">📌</span>
+                  <strong style="font-size:14px;color:var(--navy);">Other Event Tasks</strong>
+                  <span class="badge-pill" style="font-size:11px;">${tb.other.length} Tasks</span>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px;">
+                ${tb.other.map(renderWorkstreamTaskRow).join('')}
+              </div>
+            </div>
+            ` : ''}
+          </div>
+        </div>
+      </div>
+      `;
+    } catch (e) {
+      alert('Error opening event workspace: ' + e.message);
+    }
   };
 
   // =========================================================================
@@ -1359,6 +1657,7 @@
               <label style="display:block;font-size:12.5px;font-weight:700;color:var(--navy);margin-bottom:4px;">Target Team *</label>
               <select id="tf_team_id" required style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:10px;">
                 <option value="1" ${targetTeamId === 1 ? 'selected' : ''}>Sales Team</option>
+                <option value="30" ${targetTeamId === 30 ? 'selected' : ''}>Tele Caller Team</option>
                 <option value="2" ${targetTeamId === 2 ? 'selected' : ''}>Operations Team</option>
                 <option value="3" ${targetTeamId === 3 ? 'selected' : ''}>Accounts &amp; HR Team</option>
                 <option value="4" ${targetTeamId === 4 ? 'selected' : ''}>Digital Team</option>
@@ -1382,6 +1681,21 @@
               </select>
               `}
             </div>
+          </div>
+
+          <div>
+            <label style="display:block;font-size:12.5px;font-weight:700;color:var(--navy);margin-bottom:4px;">Linked Event Project (Optional)</label>
+            <select id="tf_event_id" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:10px;">
+              <option value="">— No Event (General Work) —</option>
+              ${(tm.events || []).map(ev => `
+                <option value="${ev.id}" ${(defaults.event_id && String(defaults.event_id) === String(ev.id)) ? 'selected' : ''}>
+                  [${escHtml(ev.event_code || 'EVENT')}] ${escHtml(ev.event_name || ev.title)}
+                </option>
+              `).join('')}
+            </select>
+            <span style="font-size:11.5px;color:var(--muted);display:block;margin-top:3px;">
+              Linking to an event adds this task to the event's cross-team workstream monitor and employee's routine workload.
+            </span>
           </div>
 
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
@@ -1437,6 +1751,7 @@
     const myEmpId = (session && (session.employeeId || session.employee_id)) || null;
     const ownerEl = $tm('tf_owner_id');
     const ownerVal = (ownerEl && ownerEl.value) ? parseInt(ownerEl.value, 10) : myEmpId;
+    const eventIdVal = ($tm('tf_event_id')?.value) ? parseInt($tm('tf_event_id').value, 10) : null;
 
     const payload = {
       title: $tm('tf_title').value.trim(),
@@ -1447,7 +1762,10 @@
       due_date: $tm('tf_due_date').value || null,
       description: $tm('tf_description').value.trim(),
       requires_approval: $tm('tf_requires_approval').checked,
-      parent_task_id: $tm('tf_parent_id').value || null
+      parent_task_id: $tm('tf_parent_id').value || null,
+      event_id: eventIdVal,
+      task_type: eventIdVal ? 'EVENT_WORK' : 'ONE_OFF',
+      source: eventIdVal ? 'EVENT' : 'MANUAL'
     };
 
     try {

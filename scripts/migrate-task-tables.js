@@ -2,6 +2,10 @@
 
 const fs = require('fs');
 const path = require('path');
+const envPath = path.join(__dirname, '../.env');
+if (fs.existsSync(envPath) && !process.env.DB_HOST) {
+  try { require('node:process').loadEnvFile(envPath); } catch (e) {}
+}
 const { MySQLDatabase, databaseConfig } = require('../lib/database');
 
 async function runMigration() {
@@ -56,6 +60,18 @@ async function runMigration() {
     console.log("✓ Added column handoff_notes to connect_task_tasks");
   } else {
     console.log("✓ Column handoff_notes already present");
+  }
+
+  // Ensure crm_event_id column exists on connect_task_events
+  const eventCols = await db.all(
+    "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'connect_task_events'"
+  );
+  const eventColNames = eventCols.map(c => c.COLUMN_NAME);
+  if (!eventColNames.includes('crm_event_id')) {
+    await db.run("ALTER TABLE connect_task_events ADD COLUMN crm_event_id INT NULL AFTER id, ADD UNIQUE KEY idx_task_events_crm_id (crm_event_id)");
+    console.log("✓ Added column crm_event_id to connect_task_events");
+  } else {
+    console.log("✓ Column crm_event_id already present on connect_task_events");
   }
 
   await db.close();

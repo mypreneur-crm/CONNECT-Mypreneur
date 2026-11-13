@@ -6,6 +6,7 @@ SET NAMES utf8mb4;
 
 CREATE TABLE IF NOT EXISTS connect_task_events (
   id CHAR(36) NOT NULL,
+  crm_event_id INT NULL UNIQUE,
   event_name VARCHAR(180) NOT NULL,
   event_code VARCHAR(50) NOT NULL UNIQUE,
   program_type ENUM('WEBINAR', 'ACADEMY', 'FGS', 'FGC', 'WORKSHOP', 'OTHER') NOT NULL DEFAULT 'OTHER',
@@ -18,6 +19,7 @@ CREATE TABLE IF NOT EXISTS connect_task_events (
   created_at DATETIME NOT NULL,
   updated_at DATETIME NOT NULL,
   PRIMARY KEY (id),
+  KEY idx_task_events_crm_id (crm_event_id),
   KEY idx_task_events_date (event_date),
   KEY idx_task_events_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
