@@ -18,6 +18,7 @@
     teamMembers: [],
     teamCapacity: [],
     events: [],
+    activeTimers: [],
     activeTimer: null,
     timerSeconds: 0,
     timerTickInterval: null,
@@ -74,10 +75,22 @@
     ].join(':');
   }
 
+  function extractDateStr(val) {
+    if (!val) return '';
+    const match = String(val).match(/^(\d{4}-\d{2}-\d{2})/);
+    return match ? match[1] : '';
+  }
+
+  function getTodayStr() {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  }
+
   function getDaysPending(dueDateStr) {
     if (!dueDateStr) return 0;
-    const dueStr = String(dueDateStr).split('T')[0];
-    const todayStr = new Date().toISOString().split('T')[0];
+    const dueStr = extractDateStr(dueDateStr);
+    const todayStr = getTodayStr();
+    if (!dueStr) return 0;
     const due = new Date(dueStr + 'T00:00:00');
     const today = new Date(todayStr + 'T00:00:00');
     const diff = Math.floor((today - due) / (1000 * 60 * 60 * 24));
@@ -89,8 +102,12 @@
     if (!dueDateStr || status === 'COMPLETED' || status === 'CANCELLED') {
       return { isOverdue: false, isDueToday: false, isDueSoon: false, diffDays: 0, overdueDays: 0, badgeHtml: '' };
     }
-    const dueStr = String(dueDateStr).split('T')[0];
-    const todayStr = new Date().toISOString().split('T')[0];
+    const dueStr = extractDateStr(dueDateStr);
+    const todayStr = getTodayStr();
+
+    if (!dueStr) {
+      return { isOverdue: false, isDueToday: false, isDueSoon: false, diffDays: 0, overdueDays: 0, badgeHtml: '' };
+    }
 
     const todayDate = new Date(todayStr + 'T00:00:00');
     const dueDate = new Date(dueStr + 'T00:00:00');
@@ -147,8 +164,10 @@
     if (!filterType || filterType === 'all') return true;
     if (!t.due_date) return filterType === 'no_due';
 
-    const dueStr = String(t.due_date).split('T')[0];
-    const todayStr = new Date().toISOString().split('T')[0];
+    const dueStr = extractDateStr(t.due_date);
+    const todayStr = getTodayStr();
+
+    if (!dueStr) return filterType === 'no_due';
 
     const todayMs = new Date(todayStr + 'T00:00:00').getTime();
     const dueMs = new Date(dueStr + 'T00:00:00').getTime();
@@ -156,19 +175,19 @@
 
     if (filterType === 'overdue') {
       // Date crossed (strictly past deadline) and not completed
-      return diffDays < 0 && t.status !== 'COMPLETED';
+      return diffDays < 0 && t.status !== 'COMPLETED' && t.status !== 'CANCELLED';
     }
     if (filterType === 'due_today') {
       // Due date is today
-      return diffDays === 0 && t.status !== 'COMPLETED';
+      return diffDays === 0 && t.status !== 'COMPLETED' && t.status !== 'CANCELLED';
     }
     if (filterType === 'due_soon') {
       // About to end: due today or in the next 3 days
-      return diffDays >= 0 && diffDays <= 3 && t.status !== 'COMPLETED';
+      return diffDays >= 0 && diffDays <= 3 && t.status !== 'COMPLETED' && t.status !== 'CANCELLED';
     }
     if (filterType === 'due_week') {
       // Due this week: 0 to 7 days
-      return diffDays >= 0 && diffDays <= 7 && t.status !== 'COMPLETED';
+      return diffDays >= 0 && diffDays <= 7 && t.status !== 'COMPLETED' && t.status !== 'CANCELLED';
     }
     if (filterType === 'later') {
       // Due beyond 7 days
@@ -181,7 +200,15 @@
   }
 
   function getTeamNameById(id) {
-    const map = { 1: 'Sales', 2: 'Operations', 3: 'Accounts & HR', 4: 'Digital', 5: 'Support' };
+    const map = {
+      1: 'Sales',
+      2: 'Accounts & HR',
+      3: 'Operations',
+      4: 'Support',
+      21: 'Digital Marketing',
+      22: 'Service',
+      30: 'Tele Caller'
+    };
     return map[id] || 'General';
   }
 
@@ -193,6 +220,14 @@
     return desig.includes('ADMIN') || desig.includes('CEO') || desig.includes('DIRECTOR') ||
            name.includes('ADMIN') || name.includes('SUPER ADMIN') || name.includes('SURESH RADHAKRISHNAN') || name.includes('MANOJ KOMBISSAN') ||
            uName === 'ADMIN' || uName === 'SUPERADMIN' || uName === 'SURESH' || uName === 'MANOJ';
+  }
+
+  function isTaskTimerRunning(taskId) {
+    return (tm.activeTimers || []).some(t => t.task_id === taskId);
+  }
+
+  function getTaskTimer(taskId) {
+    return (tm.activeTimers || []).find(t => t.task_id === taskId);
   }
 
   // =========================================================================
@@ -302,7 +337,8 @@
 
       tm.capacity = capRes.data;
       tm.crmWorkload = crmRes.data;
-      tm.activeTimer = activeTimerRes.data;
+      tm.activeTimers = activeTimerRes?.timers || (activeTimerRes?.data ? [activeTimerRes.data] : []);
+      tm.activeTimer = activeTimerRes?.data || (tm.activeTimers[0] || null);
       tm.stats = statsRes.data;
       tm.teamMembers = membersRes.data || [];
       tm.events = eventsRes.data || [];
@@ -607,7 +643,8 @@
   function renderTaskListItem(t) {
     const dueStatus = getDueStatus(t.due_date, t.status);
     const isOverdue = dueStatus.isOverdue;
-    const isTimerRunning = tm.activeTimer && tm.activeTimer.task_id === t.id;
+    const isTimerRunning = isTaskTimerRunning(t.id);
+    const runningTimer = getTaskTimer(t.id);
     const isApprovalPending = t.approval_status === 'PENDING';
 
     const timeDisplay = (t.estimated_minutes && t.estimated_minutes > 0)
@@ -1307,6 +1344,7 @@
     const container = $tm('tmEventsViewContainer');
     if (!container) return;
 
+    const admin = isTaskAdmin();
     const list = getFilteredEvents();
     if (list.length === 0) {
       container.innerHTML = `
@@ -1400,6 +1438,11 @@
                         ⚡ Scaffold
                       </button>
                       ` : ''}
+                      ${admin ? `
+                      <button class="btn btn-sm" onclick="tmDeleteEventProject('${ev.id}', '${escHtml(ev.event_name).replace(/'/g, "\\'")}')" style="background:#FEE2E2;color:#B91C1C;border:1px solid #FCA5A5;padding:5px 8px;font-size:11.5px;font-weight:700;border-radius:6px;" title="Delete event project and tasks">
+                        🗑️
+                      </button>
+                      ` : ''}
                     </div>
                   </td>
                 </tr>
@@ -1484,6 +1527,11 @@
                 ⚡ Scaffold
               </button>
               ` : ''}
+              ${admin ? `
+              <button class="btn btn-sm" style="background:#FEE2E2;color:#B91C1C;border:1px solid #FCA5A5;border-radius:8px;font-weight:700;padding:5px 10px;" onclick="tmDeleteEventProject('${ev.id}', '${escHtml(ev.event_name).replace(/'/g, "\\'")}')" title="Delete event project and tasks">
+                🗑️
+              </button>
+              ` : ''}
             </div>
           </div>
           `;
@@ -1516,6 +1564,29 @@
       }
     } catch (e) {
       alert('Error scaffolding event tasks: ' + e.message);
+    }
+  };
+
+  window.tmDeleteEventProject = async function(eventId, eventName) {
+    if (!isTaskAdmin()) {
+      alert('Unauthorized: Only Administrator, CEO, or Director can delete an event project.');
+      return;
+    }
+    const confirmMsg = `Are you sure you want to permanently delete event project "${eventName || eventId}"?\n\nThis will permanently delete this event project and ALL tasks, allocations, and logs created for it. This action cannot be undone.`;
+    if (!confirm(confirmMsg)) return;
+
+    try {
+      await apiRequest(`/api/tasks/events/${eventId}`, {
+        method: 'DELETE'
+      });
+      toast(`Event project "${eventName || eventId}" deleted successfully`);
+      await tmLoadEvents();
+      await tmLoadAll();
+      if ($tm('tmEventWorkspaceModal')) {
+        tmCloseModal('tmEventWorkspaceModal');
+      }
+    } catch (e) {
+      alert(`Could not delete event project: ${e.message}`);
     }
   };
 
@@ -1617,7 +1688,7 @@
           <!-- Auto-scaffold checkbox -->
           <div style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:10px;padding:12px 14px;">
             <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
-              <input type="checkbox" id="ef_auto_scaffold" checked style="width:16px;height:16px;">
+              <input type="checkbox" id="ef_auto_scaffold" style="width:16px;height:16px;">
               <span style="font-size:13px;font-weight:700;color:#166534;">⚡ Auto-generate Multi-team Workstream Tasks</span>
             </label>
             <p style="font-size:12px;color:#15803D;margin:4px 0 0 26px;">
@@ -1683,6 +1754,7 @@
 
   window.tmOpenEventWorkspace = async function(eventId) {
     try {
+      const admin = isTaskAdmin();
       const res = await apiRequest(`/api/tasks/events/${eventId}`);
       const ev = res.data;
       if (!ev) return;
@@ -1694,7 +1766,8 @@
       const pct = total > 0 ? Math.round((comp / total) * 100) : 0;
 
       const renderWorkstreamTaskRow = (t) => {
-        const isTimerRunning = tm.activeTimer && tm.activeTimer.task_id === t.id;
+        const isTimerRunning = isTaskTimerRunning(t.id);
+    const runningTimer = getTaskTimer(t.id);
         return `
         <div style="background:#FFF;border:1px solid #E2E8F0;border-radius:10px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
           <div style="flex:1;min-width:240px;">
@@ -1719,7 +1792,7 @@
             </select>
             ${isTimerRunning ? `
             <button class="btn btn-sm btn-timer active" onclick="tmStopTimer('${t.id}')" title="Stop Timer">
-              ⏹️ Stop (${formatMins(tm.activeTimer.duration_minutes || 0)})
+              ⏹️ Stop
             </button>
             ` : `
             <button class="btn btn-sm btn-timer" onclick="tmStartTimer('${t.id}')" title="Start Timer">
@@ -1801,9 +1874,16 @@
                 ⚡ Auto-Generate Team Tasks
               </button>
             </div>
-            <button class="btn btn-sm btn-secondary" onclick="tmFilterBoardByEvent('${ev.id}', '${escHtml(ev.event_code)}')">
-              View on Kanban Board &rarr;
-            </button>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <button class="btn btn-sm btn-secondary" onclick="tmFilterBoardByEvent('${ev.id}', '${escHtml(ev.event_code)}')">
+                View on Kanban Board &rarr;
+              </button>
+              ${admin ? `
+              <button class="btn btn-sm" style="background:#FEE2E2;color:#B91C1C;border:1.5px solid #FCA5A5;border-radius:8px;font-weight:700;padding:5px 12px;" onclick="tmDeleteEventProject('${ev.id}', '${escHtml(ev.event_name).replace(/'/g, "\\'")}')">
+                🗑️ Delete Event Project
+              </button>
+              ` : ''}
+            </div>
           </div>
 
           <!-- Multi-Team Workstreams List -->
@@ -2135,25 +2215,21 @@
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
             <div>
               <label style="display:block;font-size:12.5px;font-weight:700;color:var(--navy);margin-bottom:4px;">Target Team *</label>
-              <select id="tf_team_id" required style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:10px;">
+              <select id="tf_team_id" required onchange="tmUpdateAssigneeOptionsForTeam(this.value)" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:10px;">
                 <option value="1" ${targetTeamId === 1 ? 'selected' : ''}>Sales Team</option>
                 <option value="30" ${targetTeamId === 30 ? 'selected' : ''}>Tele Caller Team</option>
-                <option value="2" ${targetTeamId === 2 ? 'selected' : ''}>Operations Team</option>
-                <option value="3" ${targetTeamId === 3 ? 'selected' : ''}>Accounts &amp; HR Team</option>
-                <option value="4" ${targetTeamId === 4 ? 'selected' : ''}>Digital Team</option>
-                <option value="5" ${targetTeamId === 5 ? 'selected' : ''}>Support (Admin / CEO)</option>
+                <option value="2" ${targetTeamId === 2 ? 'selected' : ''}>Accounts &amp; HR Team</option>
+                <option value="3" ${targetTeamId === 3 ? 'selected' : ''}>Operations Team</option>
+                <option value="4" ${targetTeamId === 4 ? 'selected' : ''}>Support Team</option>
+                <option value="21" ${targetTeamId === 21 ? 'selected' : ''}>Digital Marketing Team</option>
+                <option value="22" ${targetTeamId === 22 ? 'selected' : ''}>Service Team</option>
               </select>
             </div>
             <div>
               <label style="display:block;font-size:12.5px;font-weight:700;color:var(--navy);margin-bottom:4px;">Assignee</label>
               ${admin ? `
               <select id="tf_owner_id" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:10px;">
-                <option value="">— Assign to Staff —</option>
-                ${tm.teamMembers.map(m => `
-                  <option value="${m.employee_id}" ${Number(m.employee_id) === targetOwnerId ? 'selected' : ''}>
-                    ${escHtml(m.name)} (${escHtml(m.department || 'Staff')})
-                  </option>
-                `).join('')}
+                <option value="">— Select Assignee —</option>
               </select>
               ` : `
               <select id="tf_owner_id" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:10px;background:#F8FAFC;" disabled>
@@ -2224,6 +2300,53 @@
       </div>
     </div>
     `;
+
+    if (admin) {
+      setTimeout(() => {
+        tmUpdateAssigneeOptionsForTeam(targetTeamId, targetOwnerId);
+      }, 0);
+    }
+  };
+
+  window.tmUpdateAssigneeOptionsForTeam = function(teamIdVal, selectedOwnerId) {
+    const ownerSelect = $tm('tf_owner_id');
+    if (!ownerSelect || ownerSelect.disabled) return;
+
+    const teamId = parseInt(teamIdVal, 10);
+    const nonExecMembers = (tm.teamMembers || []).filter(m => !isExecutive(m));
+
+    let filtered = [];
+    if (teamId === 30) {
+      filtered = nonExecMembers.filter(m => String(m.designation || '').toLowerCase().includes('tele caller') || m.team_id === 30);
+    } else if (teamId === 1) {
+      filtered = nonExecMembers.filter(m => (m.team_id === 1 || String(m.department || '').toLowerCase().includes('sales')) && !String(m.designation || '').toLowerCase().includes('tele caller'));
+    } else if (teamId === 2) {
+      filtered = nonExecMembers.filter(m => m.team_id === 2 || /account|hr/i.test(m.department || '') || /account|hr/i.test(m.designation || ''));
+    } else if (teamId === 3) {
+      filtered = nonExecMembers.filter(m => m.team_id === 3 || /operation/i.test(m.department || '') || /operation/i.test(m.designation || ''));
+    } else if (teamId === 4) {
+      filtered = nonExecMembers.filter(m => m.team_id === 4 || /support/i.test(m.department || '') || /support/i.test(m.designation || ''));
+    } else if (teamId === 21) {
+      filtered = nonExecMembers.filter(m => m.team_id === 21 || /digital/i.test(m.department || '') || /digital/i.test(m.designation || ''));
+    } else if (teamId === 22) {
+      filtered = nonExecMembers.filter(m => m.team_id === 22 || /service/i.test(m.department || '') || /service/i.test(m.designation || ''));
+    } else {
+      filtered = nonExecMembers.filter(m => m.team_id === teamId);
+    }
+
+    if (filtered.length === 0) {
+      filtered = nonExecMembers;
+    }
+
+    const currentVal = selectedOwnerId != null ? Number(selectedOwnerId) : (ownerSelect.value ? Number(ownerSelect.value) : null);
+    ownerSelect.innerHTML = `
+      <option value="">— Select Assignee (${filtered.length} available) —</option>
+      ${filtered.map(m => `
+        <option value="${m.employee_id}" ${currentVal === Number(m.employee_id) ? 'selected' : ''}>
+          ${escHtml(m.name)} (${escHtml(m.designation || m.department || 'Staff')})
+        </option>
+      `).join('')}
+    `;
   };
 
   window.tmHandleTaskFormSubmit = async function(e) {
@@ -2277,7 +2400,8 @@
       tm.selectedTask = t;
       const dueStatus = getDueStatus(t.due_date, t.status);
       const isOverdue = dueStatus.isOverdue;
-      const isTimerRunning = tm.activeTimer && tm.activeTimer.task_id === t.id;
+      const isTimerRunning = isTaskTimerRunning(t.id);
+    const runningTimer = getTaskTimer(t.id);
       const isApprovalPending = t.approval_status === 'PENDING';
 
       const anchor = $tm('tmModalAnchor');
@@ -2295,7 +2419,21 @@
           </div>
 
           <div class="dup-modal-body" style="gap:16px;">
-            <h2 style="font-size:18px;font-weight:800;color:var(--navy);margin:0;">${escHtml(t.title)}</h2>
+            <!-- Editable Task Title -->
+            <div style="margin:2px 0 4px 0;">
+              <label style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:700;display:block;margin-bottom:3px;">
+                Task Title (Editable)
+              </label>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <input type="text" id="td_title_input" value="${escHtml(t.title)}" 
+                  onkeydown="if(event.key==='Enter'){event.preventDefault();tmUpdateTaskTitle('${t.id}', this.value);}"
+                  style="font-size:16px;font-weight:800;color:var(--navy);border:1.5px solid #CBD5E1;border-radius:8px;padding:6px 12px;width:100%;box-sizing:border-box;background:#FFF;"
+                  title="Edit task title and press Enter or Save" />
+                <button class="btn btn-sm btn-secondary" style="font-weight:700;white-space:nowrap;padding:6px 12px;" onclick="tmUpdateTaskTitle('${t.id}', $tm('td_title_input').value)">
+                  Save
+                </button>
+              </div>
+            </div>
 
             <!-- Handoff Banner if handed off from someone -->
             ${t.previous_owner_name ? `
@@ -2342,10 +2480,10 @@
             ` : ''}
 
             <!-- Meta attributes -->
-            <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));gap:10px;background:#F8FAFC;padding:12px 14px;border-radius:12px;border:1px solid #E2E8F0;">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));gap:10px;background:#F8FAFC;padding:12px 14px;border-radius:12px;border:1px solid #E2E8F0;">
               <div>
                 <span style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600;">Status</span>
-                <select onchange="tmChangeTaskStatus('${t.id}', this.value)" style="margin-top:2px;font-size:12.5px;font-weight:700;border:1px solid #CBD5E1;border-radius:6px;padding:3px 6px;">
+                <select onchange="tmChangeTaskStatus('${t.id}', this.value)" style="margin-top:2px;font-size:12.5px;font-weight:700;border:1px solid #CBD5E1;border-radius:6px;padding:4px 6px;width:100%;background:#FFF;">
                   <option value="OPEN" ${t.status === 'OPEN' ? 'selected' : ''}>Open</option>
                   <option value="IN_PROGRESS" ${t.status === 'IN_PROGRESS' ? 'selected' : ''}>In Progress</option>
                   <option value="IN_REVIEW" ${t.status === 'IN_REVIEW' ? 'selected' : ''}>In Review</option>
@@ -2354,19 +2492,29 @@
                 </select>
               </div>
               <div>
-                <span style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600;">Assignee</span>
-                <div style="font-size:13px;font-weight:700;color:var(--navy);margin-top:4px;">${escHtml(t.owner_name || 'Unassigned')}</div>
-              </div>
-              <div>
-                <span style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600;">Team</span>
-                <div style="font-size:13px;font-weight:700;color:var(--navy);margin-top:4px;">${getTeamNameById(t.team_id)}</div>
+                <span style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600;">Priority</span>
+                <select onchange="tmUpdateTaskPriority('${t.id}', this.value)" style="margin-top:2px;font-size:12.5px;font-weight:700;border:1px solid #CBD5E1;border-radius:6px;padding:4px 6px;width:100%;background:#FFF;">
+                  <option value="NORMAL" ${t.priority === 'NORMAL' ? 'selected' : ''}>Normal</option>
+                  <option value="HIGH" ${t.priority === 'HIGH' ? 'selected' : ''}>High</option>
+                  <option value="CRITICAL" ${t.priority === 'CRITICAL' ? 'selected' : ''}>Critical</option>
+                  <option value="LOW" ${t.priority === 'LOW' ? 'selected' : ''}>Low</option>
+                </select>
               </div>
               <div>
                 <span style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600;">Due Date</span>
-                <div style="font-size:13px;font-weight:700;color:${dueStatus.isOverdue ? '#EF4444' : (dueStatus.isDueToday ? '#D97706' : 'var(--navy)')};margin-top:4px;display:flex;align-items:center;gap:6px;">
-                  ${t.due_date ? new Date(t.due_date).toLocaleDateString() : 'None'}
-                  ${dueStatus.badgeHtml}
+                <div style="display:flex;align-items:center;gap:4px;margin-top:2px;">
+                  <input type="date" value="${t.due_date ? extractDateStr(t.due_date) : ''}"
+                    onchange="tmUpdateTaskDueDate('${t.id}', this.value)"
+                    style="font-size:12px;font-weight:700;border:1px solid #CBD5E1;border-radius:6px;padding:4px 6px;color:${dueStatus.isOverdue ? '#EF4444' : 'var(--navy)'};background:#FFF;width:100%;" />
                 </div>
+              </div>
+              <div>
+                <span style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600;">Assignee</span>
+                <div style="font-size:13px;font-weight:700;color:var(--navy);margin-top:6px;">${escHtml(t.owner_name || 'Unassigned')}</div>
+              </div>
+              <div>
+                <span style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600;">Team</span>
+                <div style="font-size:13px;font-weight:700;color:var(--navy);margin-top:6px;">${getTeamNameById(t.team_id)}</div>
               </div>
             </div>
 
@@ -2564,6 +2712,58 @@
     }
   };
 
+  window.tmUpdateTaskTitle = async function(taskId, newTitle) {
+    if (!newTitle || !newTitle.trim()) {
+      alert('Task title cannot be empty.');
+      return;
+    }
+    try {
+      await apiRequest(`/api/tasks/${taskId}`, {
+        method: 'PATCH',
+        body: { title: newTitle.trim() }
+      });
+      toast('Task title updated successfully');
+      await tmLoadAll();
+      if (tm.selectedTask && tm.selectedTask.id === taskId) {
+        tmOpenTaskDetails(taskId);
+      }
+    } catch (e) {
+      alert(`Could not update title: ${e.message}`);
+    }
+  };
+
+  window.tmUpdateTaskPriority = async function(taskId, newPriority) {
+    try {
+      await apiRequest(`/api/tasks/${taskId}`, {
+        method: 'PATCH',
+        body: { priority: newPriority }
+      });
+      toast(`Priority updated to ${newPriority}`);
+      await tmLoadAll();
+      if (tm.selectedTask && tm.selectedTask.id === taskId) {
+        tmOpenTaskDetails(taskId);
+      }
+    } catch (e) {
+      alert(`Could not update priority: ${e.message}`);
+    }
+  };
+
+  window.tmUpdateTaskDueDate = async function(taskId, newDueDate) {
+    try {
+      await apiRequest(`/api/tasks/${taskId}`, {
+        method: 'PATCH',
+        body: { due_date: newDueDate || null }
+      });
+      toast(newDueDate ? `Due date updated to ${newDueDate}` : 'Due date cleared');
+      await tmLoadAll();
+      if (tm.selectedTask && tm.selectedTask.id === taskId) {
+        tmOpenTaskDetails(taskId);
+      }
+    } catch (e) {
+      alert(`Could not update due date: ${e.message}`);
+    }
+  };
+
   // =========================================================================
   // Manual Time Log Modal
   // =========================================================================
@@ -2664,31 +2864,90 @@
     }
   };
 
+  window.tmStopAllTimers = async function() {
+    const timers = tm.activeTimers || [];
+    if (timers.length === 0) return;
+    try {
+      await Promise.all(timers.map(t => apiRequest(`/api/tasks/${t.task_id}/timer/stop`, { method: 'POST', body: {} })));
+      toast(`Stopped all ${timers.length} active timers`);
+      await tmLoadAll();
+      if (tm.selectedTask) tmOpenTaskDetails(tm.selectedTask.id);
+    } catch (e) {
+      alert(`Could not stop timers: ${e.message}`);
+    }
+  };
+
   function updateTimerBanner() {
     const banner = $tm('tmActiveTimerBanner');
-    const titleEl = $tm('tmTimerTaskTitle');
-    if (!banner || !titleEl) return;
-
-    if (tm.activeTimer) {
-      banner.style.display = 'flex';
-      titleEl.textContent = tm.activeTimer.task_title || tm.activeTimer.task_code || 'Task In Progress';
-      const startMs = new Date(tm.activeTimer.start_time).getTime();
-      const nowMs = Date.now();
-      tm.timerSeconds = Math.max(0, Math.floor((nowMs - startMs) / 1000));
-    } else {
+    if (!banner) return;
+    const timers = tm.activeTimers || [];
+    if (timers.length === 0) {
       banner.style.display = 'none';
-      tm.timerSeconds = 0;
+      return;
     }
+
+    banner.style.display = 'flex';
+    banner.style.flexDirection = 'column';
+    banner.style.gap = '8px';
+    banner.style.padding = '10px 16px';
+    banner.style.maxHeight = '240px';
+    banner.style.overflowY = 'auto';
+
+    const nowMs = Date.now();
+    banner.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:${timers.length > 1 ? '1px solid #A7F3D0' : 'none'};padding-bottom:${timers.length > 1 ? '6px' : '0'};">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="timer-pulse-dot"></span>
+          <strong style="font-size:13px;color:#065F46;">
+            Active Work Timer${timers.length > 1 ? `s (${timers.length})` : ''}:
+          </strong>
+        </div>
+        ${timers.length > 1 ? `
+          <button class="btn btn-sm" style="background:#EF4444;color:#FFF;border-radius:6px;padding:3px 10px;font-size:11.5px;font-weight:700;" onclick="tmStopAllTimers()">
+            ⏹ Stop All (${timers.length})
+          </button>
+        ` : ''}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        ${timers.map(t => {
+          const startMs = new Date(t.start_time).getTime();
+          const elapsedSec = Math.max(0, Math.floor((nowMs - startMs) / 1000));
+          return `
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;background:rgba(255,255,255,0.7);padding:6px 12px;border-radius:8px;border:1px solid #86EFAC;">
+            <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;cursor:pointer;" onclick="tmOpenTaskDetails('${t.task_id}')">
+              <span class="task-code" style="font-size:11.5px;font-weight:800;background:#ECFDF5;color:#065F46;border-color:#A7F3D0;">${escHtml(t.task_code || 'TASK')}</span>
+              <span style="font-size:13px;font-weight:700;color:#065F46;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:320px;" title="${escHtml(t.task_title || '')}">
+                ${escHtml(t.task_title || 'Task in Progress')}
+              </span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span class="timer-clock" id="tmTimerClock_${t.task_id}" data-start-time="${t.start_time}" style="font-size:13.5px;font-weight:800;color:#065F46;">
+                ${formatTimeHMS(elapsedSec)}
+              </span>
+              <button class="btn btn-sm" style="background:#EF4444;color:#FFF;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:700;" onclick="tmStopTimer('${t.task_id}')">
+                ⏹ Stop
+              </button>
+            </div>
+          </div>
+          `;
+        }).join('')}
+      </div>
+    `;
   }
 
   function startTimerTicker() {
     if (tm.timerTickInterval) clearInterval(tm.timerTickInterval);
     tm.timerTickInterval = setInterval(() => {
-      if (tm.activeTimer) {
-        tm.timerSeconds++;
-        const clock = $tm('tmTimerClock');
-        if (clock) clock.textContent = formatTimeHMS(tm.timerSeconds);
-      }
+      const nowMs = Date.now();
+      const clocks = document.querySelectorAll('[id^="tmTimerClock_"]');
+      clocks.forEach(el => {
+        const startStr = el.getAttribute('data-start-time');
+        if (startStr) {
+          const startMs = new Date(startStr).getTime();
+          const sec = Math.max(0, Math.floor((nowMs - startMs) / 1000));
+          el.textContent = formatTimeHMS(sec);
+        }
+      });
     }, 1000);
   }
 

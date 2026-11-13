@@ -17,6 +17,9 @@ async function runTests() {
 
   const service = new TaskService(db);
 
+  // Clean up any dangling timers from previous interrupted runs
+  await db.run('UPDATE connect_task_time_entries SET is_active = 0 WHERE employee_id = 1 AND is_active = 1');
+
   // Test Actor (Admin/Staff)
   const testUser = {
     id: 1,
@@ -106,26 +109,49 @@ async function runTests() {
   const activeTimer = await service.getActiveTimer(1);
   console.log(`✓ Active timer lookup returned task: ${activeTimer.task_title} (${activeTimer.task_code})`);
 
-  // 5. Test Strict Single Active Timer Across Devices
-  console.log('\n[Test 5] Testing Strict 1-Active-Timer Rule...');
+  // 5. Test Concurrent Multi-Task Timers (Employee can work on more than one task simultaneously)
+  console.log('\n[Test 5] Testing Concurrent Multi-Task Timer Support...');
   const timerResult2 = await service.startTimer(task1.id, 1);
-  console.log(`✓ Started second timer on Task 1. Previous timer should have auto-paused.`);
+  console.log(`✓ Started second timer on Task 1 simultaneously.`);
 
-  const activeTimer2 = await service.getActiveTimer(1);
-  console.log(`✓ Active timer is now: ${activeTimer2.task_title} (${activeTimer2.task_code})`);
-  if (activeTimer2.task_id !== task1.id) {
-    throw new Error('Active timer was not switched to Task 1!');
+  const activeTimersList = await service.getActiveTimers(1);
+  console.log(`✓ Active timers count: ${activeTimersList.length}`);
+  if (activeTimersList.length < 2) {
+    throw new Error('Expected at least 2 active concurrent timers for employee!');
   }
+  console.log(`✓ Concurrent timers confirmed: ${activeTimersList.map(t => t.task_code).join(', ')}`);
 
-  // Stop timer
-  const stopRes = await service.stopTimer(task1.id, 1, 'Completed initial review');
-  console.log(`✓ Timer stopped. Recorded elapsed minutes: ${stopRes.elapsedMins}m`);
+  // Stop first timer
+  const stopRes1 = await service.stopTimer(task1.id, 1, 'Completed initial review');
+  console.log(`✓ Task 1 timer stopped. Recorded elapsed minutes: ${stopRes1.elapsedMins}m`);
 
-  const activeTimerAfterStop = await service.getActiveTimer(1);
-  if (activeTimerAfterStop !== null) {
-    throw new Error('Active timer still exists after stop!');
+  // Stop second timer
+  const stopRes2 = await service.stopTimer(gatedTask.id, 1, 'Completed gated task work');
+  console.log(`✓ Gated task timer stopped. Recorded elapsed minutes: ${stopRes2.elapsedMins}m`);
+
+  const activeTimersAfterStop = await service.getActiveTimers(1);
+  if (activeTimersAfterStop.length !== 0) {
+    throw new Error('Active timers still exist after stopping all!');
   }
-  console.log('✓ Verified: No active timer running after stop.');
+  console.log('✓ Verified: All active timers stopped cleanly.');
+
+  // Test 5b: Testing Task Name, Due Date, and Priority Editable by Employee
+  console.log('\n[Test 5b] Testing Task Title, Due Date, and Priority Editing...');
+  const updatedTask = await service.updateTask(task1.id, {
+    title: 'Review Mentee Onboarding Pipeline - Updated Title',
+    priority: 'HIGH',
+    due_date: '2026-11-20'
+  }, testUser);
+  console.log(`✓ Task updated: title="${updatedTask.title}", priority="${updatedTask.priority}", deadline="${updatedTask.deadline}"`);
+  if (updatedTask.title !== 'Review Mentee Onboarding Pipeline - Updated Title') {
+    throw new Error('Task title did not update correctly!');
+  }
+  if (updatedTask.priority !== 'HIGH') {
+    throw new Error('Task priority did not update correctly!');
+  }
+  if (!String(updatedTask.deadline).startsWith('2026-11-20')) {
+    throw new Error('Task due date did not update correctly!');
+  }
 
   // 6. Test 9-Hour Capacity & Utilization Calculation
   console.log('\n[Test 6] Testing 540-minute Daily Capacity Engine...');
@@ -151,6 +177,49 @@ async function runTests() {
   if (teamCap.length > 0) {
     console.log(`Sample member: ${teamCap[0].name} (${teamCap[0].department}) - Planned: ${teamCap[0].capacity.plannedAllocationPct}%`);
   }
+
+  // 8b. Test Event Project Creation & Admin Deletion Flow
+  console.log('\n[Test 8b] Testing Event Project Creation & Admin Deletion Flow...');
+  const testEvent = await service.createEvent({
+    event_name: 'Test Workshop Project Deletion',
+    event_type_id: 1,
+    start_date: '2026-12-01',
+    end_date: '2026-12-02',
+    location: 'Chennai',
+    auto_scaffold_tasks: false
+  }, testUser);
+  console.log(`✓ Created test event: [${testEvent.event_code}] ${testEvent.event_name} (ID: ${testEvent.id})`);
+
+  // Add a task to this event
+  const eventTask = await service.createTask({
+    title: 'Venue Setup for Workshop',
+    event_id: testEvent.id,
+    team_id: 3,
+    owner_employee_id: 1
+  }, testUser);
+  console.log(`✓ Created task for event: [${eventTask.task_code}] ${eventTask.title}`);
+
+  // Test non-admin deletion block
+  const regularStaff = { id: 99, role: 'employee', designation: 'Staff' };
+  let caughtUnauthorized = false;
+  try {
+    await service.deleteEventProject(testEvent.id, regularStaff);
+  } catch (e) {
+    caughtUnauthorized = true;
+    console.log(`✓ Non-admin deletion correctly blocked: "${e.message}"`);
+  }
+  if (!caughtUnauthorized) {
+    throw new Error('Regular staff should not be able to delete an event project!');
+  }
+
+  // Admin deletion
+  const deleteResult = await service.deleteEventProject(testEvent.id, testUser);
+  console.log(`✓ Admin successfully deleted event: deleted tasks count = ${deleteResult.deletedTaskCount}`);
+  const eventCheck = await service.getEventById(testEvent.id);
+  if (eventCheck !== null) {
+    throw new Error('Event project still exists in DB after deletion!');
+  }
+  console.log('✓ Verified: Event project and all linked tasks completely deleted.');
 
   // 9. Clean up test tasks
   console.log('\n[Test 9] Cleaning up test tasks...');
