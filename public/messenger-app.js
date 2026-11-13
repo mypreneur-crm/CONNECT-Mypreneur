@@ -56,6 +56,45 @@
   };
 
   /* ==========================================================================
+     UNIFIED API CLIENT HELPER (CSRF & SESSION SAFE)
+     ========================================================================== */
+
+  async function apiCall(endpoint, options = {}) {
+    if (typeof window.apiRequest === 'function') {
+      try {
+        return await window.apiRequest(endpoint, options);
+      } catch (err) {
+        // Fall back to fetch if window.apiRequest had an issue
+      }
+    }
+    const method = String(options.method || 'GET').toUpperCase();
+    const token = window.csrfToken || (typeof csrfToken !== 'undefined' ? csrfToken : '') || '';
+    const headers = Object.assign({
+      'Accept': 'application/json'
+    }, options.headers || {});
+    let body = options.body;
+    if (body !== undefined && body !== null && !(body instanceof FormData)) {
+      headers['Content-Type'] = 'application/json';
+      if (typeof body !== 'string') body = JSON.stringify(body);
+    }
+    if (!['GET', 'HEAD'].includes(method) && token) {
+      headers['X-CSRF-Token'] = token;
+    }
+    const res = await fetch(endpoint, {
+      method,
+      headers,
+      body,
+      credentials: 'same-origin'
+    });
+    const isJson = (res.headers.get('content-type') || '').includes('application/json');
+    const data = isJson ? await res.json().catch(() => ({})) : {};
+    if (!res.ok) {
+      throw new Error(data.error || `Request failed (${res.status})`);
+    }
+    return data;
+  }
+
+  /* ==========================================================================
      AUDIO SYNTHESIS (WEB AUDIO API - ZERO EXTERNAL ASSETS NEEDED)
      ========================================================================== */
 
@@ -939,6 +978,10 @@
      ========================================================================== */
 
   async function openFloatingChat(convId) {
+    if (!state.currentUser) {
+      const u = window.session || (typeof session !== 'undefined' ? session : null);
+      if (u) init(u);
+    }
     let chat = state.openChats[convId];
     if (!chat) {
       // Find conv details from state or fetch
@@ -947,7 +990,14 @@
         await loadConversations();
         conv = state.conversations.find(c => c.id === convId);
       }
-      if (!conv) return;
+      if (!conv) {
+        conv = {
+          id: convId,
+          type: 'DIRECT',
+          title: 'Direct Chat',
+          unread_count: 0
+        };
+      }
 
       chat = {
         convId,
@@ -965,6 +1015,12 @@
     await loadChatMessages(convId);
     markConversationRead(convId);
 
+    // Focus input
+    setTimeout(() => {
+      const input = document.getElementById(`chatInput_${convId}`);
+      if (input) input.focus();
+    }, 100);
+
     // Start live poll for this chat window
     if (!chat.pollInterval) {
       chat.pollInterval = setInterval(() => {
@@ -974,22 +1030,43 @@
   }
 
   async function startDirectChatWithEmployee(empId) {
+    if (!state.currentUser) {
+      const u = window.session || (typeof session !== 'undefined' ? session : null);
+      if (u) init(u);
+    }
+    if (!state.employees || state.employees.length === 0) {
+      await loadEmployees();
+    }
+    const targetEmp = (state.employees || []).find(e => Number(e.id) === Number(empId));
+
     try {
-      const res = await fetch('/api/chat/conversations/direct', {
+      const data = await apiCall('/api/chat/conversations/direct', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-csrf-token': window.csrfToken || ''
-        },
-        body: JSON.stringify({ target_employee_id: empId })
+        body: { target_employee_id: empId }
       });
-      const data = await res.json();
-      if (data.ok && data.conversation_id) {
-        await loadConversations();
-        openFloatingChat(data.conversation_id);
+      const convId = data.conversation_id || (data.data && data.data.conversation_id);
+      if (convId) {
+        let conv = state.conversations.find(c => c.id === convId);
+        if (!conv) {
+          conv = {
+            id: convId,
+            type: 'DIRECT',
+            title: targetEmp ? targetEmp.name : 'Direct Chat',
+            target_employee: targetEmp ? { employee_id: Number(empId), name: targetEmp.name } : null,
+            status: targetEmp ? (targetEmp.status || 'OFFLINE') : 'OFFLINE',
+            unread_count: 0,
+            last_message: ''
+          };
+          state.conversations.unshift(conv);
+        }
+        await openFloatingChat(convId);
+        loadConversations();
+      } else {
+        alert(data.error || 'Could not initiate chat with this employee.');
       }
     } catch (e) {
       console.error('Error starting direct chat:', e);
+      alert('Unable to open chat: ' + e.message);
     }
   }
 
@@ -1268,28 +1345,25 @@
     input.value = '';
 
     try {
-      const res = await fetch(`/api/chat/conversations/${convId}/messages`, {
+      const data = await apiCall(`/api/chat/conversations/${convId}/messages`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-csrf-token': window.csrfToken || ''
-        },
-        body: JSON.stringify({
+        body: {
           type: 'TEXT',
           content: text
-        })
+        }
       });
-      const data = await res.json();
-      if (data.ok && data.message) {
+      if (data && (data.message || data.ok)) {
+        const msg = data.message || data;
         const chat = state.openChats[convId];
         if (chat) {
-          chat.messages.push({ ...data.message, is_self: true, sender_name: state.currentUser?.name });
+          chat.messages.push({ ...msg, is_self: true, sender_name: state.currentUser?.name });
           renderChatMessages(convId, true);
         }
         loadConversations();
       }
     } catch (e) {
       console.error('Failed to send text message:', e);
+      alert('Could not send message: ' + e.message);
     }
   }
 
@@ -1309,26 +1383,22 @@
     reader.onload = async () => {
       const base64Data = reader.result;
       try {
-        const res = await fetch(`/api/chat/conversations/${convId}/messages`, {
+        const data = await apiCall(`/api/chat/conversations/${convId}/messages`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-csrf-token': window.csrfToken || ''
-          },
-          body: JSON.stringify({
+          body: {
             content: '',
             file: {
               name: file.name,
               type: file.type,
               data: base64Data
             }
-          })
+          }
         });
-        const data = await res.json();
-        if (data.ok && data.message) {
+        if (data && (data.message || data.ok)) {
+          const msg = data.message || data;
           const chat = state.openChats[convId];
           if (chat) {
-            chat.messages.push({ ...data.message, is_self: true, sender_name: state.currentUser?.name });
+            chat.messages.push({ ...msg, is_self: true, sender_name: state.currentUser?.name });
             renderChatMessages(convId, true);
           }
           loadConversations();
@@ -1444,22 +1514,20 @@
     const memberIds = checkedBoxes.map(cb => Number(cb.value));
 
     try {
-      const res = await fetch('/api/chat/conversations/group', {
+      const data = await apiCall('/api/chat/conversations/group', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-csrf-token': window.csrfToken || ''
-        },
-        body: JSON.stringify({
+        body: {
           title,
           member_employee_ids: memberIds
-        })
+        }
       });
-      const data = await res.json();
-      if (data.ok && data.conversation_id) {
+      const convId = data.conversation_id || (data.data && data.data.conversation_id);
+      if (convId) {
         document.getElementById('msgNewGroupModal')?.remove();
         await loadConversations();
-        openFloatingChat(data.conversation_id);
+        openFloatingChat(convId);
+      } else {
+        alert(data.error || 'Failed to create group');
       }
     } catch (e) {
       alert('Error creating group: ' + e.message);
@@ -1478,8 +1546,12 @@
   };
 
   async function startCallWithEmployee(receiverEmpId, callType = 'AUDIO') {
+    if (!state.currentUser) {
+      const u = window.session || (typeof session !== 'undefined' ? session : null);
+      if (u) init(u);
+    }
     const recId = Number(receiverEmpId);
-    const targetEmp = state.employees.find(e => Number(e.id) === recId);
+    const targetEmp = (state.employees || []).find(e => Number(e.id) === recId);
     const targetName = targetEmp ? targetEmp.name : `Employee #${recId}`;
 
     try {
@@ -1523,21 +1595,16 @@
       };
 
       // Send initiate call request to server
-      const res = await fetch('/api/chat/call/initiate', {
+      const data = await apiCall('/api/chat/call/initiate', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-csrf-token': window.csrfToken || ''
-        },
-        body: JSON.stringify({
+        body: {
           receiver_employee_id: recId,
           call_type: callType,
           sdp_offer: JSON.stringify(offer)
-        })
+        }
       });
 
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || 'Failed to start call');
+      if (!data.callId && !data.ok) throw new Error(data.error || 'Failed to start call');
 
       state.activeCall.callId = data.callId;
       startRingtone();
@@ -1655,10 +1722,9 @@
 
     if (action === 'DECLINE') {
       try {
-        await fetch('/api/chat/call/respond', {
+        await apiCall('/api/chat/call/respond', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-csrf-token': window.csrfToken || '' },
-          body: JSON.stringify({ call_id: call.callId, action: 'DECLINE' })
+          body: { call_id: call.callId, action: 'DECLINE' }
         });
       } catch (e) {}
       return;
@@ -1707,14 +1773,13 @@
       await pc.setLocalDescription(answer);
 
       // Send answer
-      await fetch('/api/chat/call/respond', {
+      await apiCall('/api/chat/call/respond', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-csrf-token': window.csrfToken || '' },
-        body: JSON.stringify({
+        body: {
           call_id: call.callId,
           action: 'ACCEPT',
           sdp_answer: JSON.stringify(answer)
-        })
+        }
       });
 
       startCallDurationTimer();

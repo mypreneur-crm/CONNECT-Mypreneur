@@ -1376,7 +1376,7 @@ td .t-url{
 <div id="toast" class="toast" role="status"></div>
 
 <script src="/tasks-app.js?v=20261113_08"></script>
-<script src="/messenger-app.js?v=20261113_01"></script>
+<script src="/messenger-app.js?v=20261113_02"></script>
 <script>
 /* =====================================================================
    MYPRENEUR CONNECT — CONFIGURATION
@@ -1516,14 +1516,22 @@ async function apiRequest(endpoint, options = {}){
   }
   return payload;
 }
+window.apiRequest = apiRequest;
+
 async function loadPortalData(){
   const data = await apiRequest('/api/bootstrap');
   session = data.user || null;
   csrfToken = data.csrfToken || '';
+  window.session = session;
+  window.csrfToken = csrfToken;
+  window.apiRequest = apiRequest;
   links = Array.isArray(data.links) ? data.links : [];
   events = Array.isArray(data.events) ? data.events : [];
   announcements = Array.isArray(data.announcements) ? data.announcements : [];
   feedback = Array.isArray(data.feedback) ? data.feedback : [];
+  if (window.MessengerApp && session) {
+    window.MessengerApp.init(session);
+  }
   return data;
 }
 
@@ -1728,6 +1736,7 @@ async function doLogin(){
     $('#loginError').classList.remove('show');
     const login = await apiRequest('/api/login', { method:'POST', body:{ username:u, password:p } });
     session = login.user; csrfToken = login.csrfToken || '';
+    window.session = session; window.csrfToken = csrfToken;
     await loadPortalData();
     location.hash = '#/dashboard';
     showApp();
