@@ -83,6 +83,21 @@ async function testChatSuite() {
   assert(groupMsg.id, 'Group message sent');
   console.log('  Group conversation created and message posted:', groupConvId);
 
+  // 6b. Test Group Edit & Update
+  console.log('6b. Testing Group Edit & Member Management...');
+  const updatedGroup = await chatService.updateGroupConversation(1, groupConvId, {
+    title: 'Product & Tech Titans (Updated)',
+    memberEmpIds: [2, 22]
+  });
+  assert.strictEqual(updatedGroup.title, 'Product & Tech Titans (Updated)', 'Group title updated');
+  console.log('  Group title and members updated successfully:', updatedGroup.title);
+
+  // 6c. Test Group Delete
+  console.log('6c. Testing Group Delete...');
+  const delRes = await chatService.deleteGroupConversation(1, groupConvId);
+  assert.strictEqual(delRes.ok, true, 'Group deleted');
+  console.log('  Group deleted successfully');
+
   // 7. Test Conversations List
   console.log('7. Testing Conversations Listing...');
   const userConvs = await chatService.getConversations(1);

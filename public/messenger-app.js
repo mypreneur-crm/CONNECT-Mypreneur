@@ -937,18 +937,28 @@
           No group chats found.
         </div>
       ` : list.map(g => `
-        <div onclick="window.MessengerApp.openFloatingChat('${g.id}')" style="display:flex;align-items:center;gap:12px;padding:10px 16px;cursor:pointer;transition:background 0.15s;border-bottom:1px solid #F1F5F9;" onmouseover="this.style.background='#F8FAFC'" onmouseout="this.style.background=''">
-          <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg, #8B5CF6, #6D28D9);color:#FFF;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">
-            👥
-          </div>
-          <div style="flex:1;min-width:0;">
-            <div style="display:flex;align-items:center;justify-content:space-between;">
-              <strong style="font-size:13.5px;color:#0F172A;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(g.title)}</strong>
-              <span style="font-size:11px;color:#94A3B8;">${g.members ? `${g.members.length} members` : ''}</span>
+        <div style="display:flex;align-items:center;padding:10px 16px;transition:background 0.15s;border-bottom:1px solid #F1F5F9;gap:10px;" onmouseover="this.style.background='#F8FAFC'" onmouseout="this.style.background=''">
+          <div onclick="window.MessengerApp.openFloatingChat('${g.id}')" style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;cursor:pointer;">
+            <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg, #8B5CF6, #6D28D9);color:#FFF;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">
+              👥
             </div>
-            <p style="margin:2px 0 0;font-size:12px;color:#64748B;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-              ${escHtml(g.last_message || 'Active Group Channel')}
-            </p>
+            <div style="flex:1;min-width:0;">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+                <strong style="font-size:13.5px;color:#0F172A;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(g.title)}</strong>
+                <span style="font-size:11px;color:#94A3B8;flex-shrink:0;">${g.members ? `${g.members.length} members` : ''}</span>
+              </div>
+              <p style="margin:2px 0 0;font-size:12px;color:#64748B;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                ${escHtml(g.last_message || 'Active Group Channel')}
+              </p>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;" onclick="event.stopPropagation()">
+            <button onclick="window.MessengerApp.openEditGroupModal('${g.id}')" class="msg-btn msg-btn-ghost" title="Edit Group Name & Members" style="padding:6px;font-size:13px;border-radius:6px;color:#475569;">
+              ✏️
+            </button>
+            <button onclick="window.MessengerApp.confirmDeleteGroup('${g.id}', '${escHtml(g.title).replace(/'/g, "\\'")}')" class="msg-btn msg-btn-ghost" title="Delete Group" style="padding:6px;font-size:13px;border-radius:6px;color:#EF4444;">
+              🗑️
+            </button>
           </div>
         </div>
       `).join('')}
@@ -1175,6 +1185,11 @@
                 </button>
                 <button onclick="window.MessengerApp.startCallWithEmployee(${targetEmp.employee_id}, 'VIDEO')" class="msg-btn" title="Video Call" style="background:transparent;color:#FFF;padding:4px 6px;font-size:14px;">
                   📹
+                </button>
+              ` : ''}
+              ${isGroup ? `
+                <button onclick="window.MessengerApp.openEditGroupModal('${chat.convId}')" class="msg-btn" title="Edit Group (Settings & Members)" style="background:transparent;color:#FFF;padding:4px 6px;font-size:13px;line-height:1;">
+                  ⚙️
                 </button>
               ` : ''}
               <button onclick="window.MessengerApp.toggleMinimizeChat('${chat.convId}')" class="msg-btn" title="Minimize" style="background:transparent;color:#FFF;padding:4px;font-size:12px;line-height:1;">
@@ -1602,6 +1617,189 @@
       }
     } catch (e) {
       alert('Error creating group: ' + e.message);
+    }
+  }
+
+  /* ==========================================================================
+     GROUP EDIT, MEMBERS MANAGEMENT & DELETION MODAL
+     ========================================================================== */
+
+  function openEditGroupModal(convId) {
+    let conv = state.conversations.find(c => c.id === convId);
+    if (!conv && state.openChats[convId]) {
+      conv = state.openChats[convId].conv;
+    }
+    if (!conv) {
+      alert('Group information not found.');
+      return;
+    }
+
+    const myEmpId = state.currentUser?.employeeId || state.currentUser?.id;
+    const candidates = (state.employees || []).filter(e => {
+      if (Number(e.id) === 1) return false;
+      const nm = (e.name || '').toLowerCase();
+      if (nm.includes('super admin')) return false;
+      return true;
+    });
+
+    const existingMemberIds = new Set((conv.members || []).map(m => Number(m.employee_id || m.id)));
+    const isCreatorOrAdmin = Number(conv.created_by) === Number(myEmpId) || state.currentUser?.role === 'admin' || Number(myEmpId) === 1;
+
+    document.getElementById('msgEditGroupModal')?.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'msgEditGroupModal';
+    modal.className = 'msg-modal-overlay';
+    modal.innerHTML = `
+      <div class="msg-modal-box" style="max-width:440px;animation:msgPopIn 0.2s cubic-bezier(0.16,1,0.3,1);">
+        <div style="padding:16px 20px;border-bottom:1px solid #E2E8F0;display:flex;align-items:center;justify-content:space-between;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:20px;">👥</span>
+            <div>
+              <h3 style="margin:0;font-size:16px;font-weight:700;color:#0F172A;">Edit Group</h3>
+              <span style="font-size:11.5px;color:#64748B;">Manage title and team members</span>
+            </div>
+          </div>
+          <button onclick="document.getElementById('msgEditGroupModal').remove()" style="background:none;border:none;font-size:22px;color:#94A3B8;cursor:pointer;">&times;</button>
+        </div>
+
+        <div style="padding:16px 20px;display:flex;flex-direction:column;gap:14px;">
+          <div>
+            <label style="font-size:12px;font-weight:700;color:#475569;text-transform:uppercase;">Group Name *</label>
+            <input type="text" id="editGroupTitle" value="${escHtml(conv.raw_title || conv.title)}" placeholder="Enter group name" style="width:100%;margin-top:4px;padding:8px 12px;border:1px solid #CBD5E1;border-radius:8px;font-size:13.5px;box-sizing:border-box;">
+          </div>
+
+          <div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <label style="font-size:12px;font-weight:700;color:#475569;text-transform:uppercase;">Members</label>
+              <span id="editGroupSelectedCount" style="font-size:11.5px;color:#0284C7;font-weight:700;">${existingMemberIds.size} selected</span>
+            </div>
+
+            <div style="max-height:220px;overflow-y:auto;border:1px solid #E2E8F0;border-radius:10px;padding:6px;display:flex;flex-direction:column;gap:4px;">
+              ${candidates.map(e => {
+                const isChecked = existingMemberIds.has(Number(e.id));
+                const isCreator = Number(e.id) === Number(conv.created_by);
+                return `
+                  <label style="display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:6px;cursor:pointer;transition:background 0.1s;" onmouseover="this.style.background='#F8FAFC'" onmouseout="this.style.background=''">
+                    <input type="checkbox" value="${e.id}" class="edit-group-member-cb" ${isChecked ? 'checked' : ''} ${isCreator ? 'disabled title="Creator cannot be removed"' : ''} onchange="window.MessengerApp.updateEditGroupSelectedCount()" style="width:16px;height:16px;cursor:pointer;">
+                    <div style="width:28px;height:28px;border-radius:6px;background:${getAvatarColor(e.name)};color:#FFF;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;">
+                      ${getInitials(e.name)}
+                    </div>
+                    <div style="flex:1;min-width:0;">
+                      <div style="font-size:13px;font-weight:600;color:#0F172A;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                        ${escHtml(e.name)} ${isCreator ? '<span style="font-size:10px;color:#0284C7;font-weight:700;background:#E0F2FE;padding:1px 5px;border-radius:4px;margin-left:4px;">Creator</span>' : ''}
+                      </div>
+                      <div style="font-size:11px;color:#64748B;">${escHtml(e.department || '')}</div>
+                    </div>
+                  </label>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        </div>
+
+        <div style="padding:14px 20px;border-top:1px solid #E2E8F0;background:#FAFAFA;display:flex;justify-content:space-between;align-items:center;gap:10px;">
+          <div>
+            ${isCreatorOrAdmin ? `
+              <button onclick="window.MessengerApp.confirmDeleteGroup('${conv.id}', '${escHtml(conv.title).replace(/'/g, "\\'")}')" class="msg-btn" style="background:#FEE2E2;color:#DC2626;padding:8px 12px;font-size:12.5px;" title="Permanently delete this group">
+                🗑️ Delete Group
+              </button>
+            ` : `
+              <button onclick="window.MessengerApp.leaveGroup('${conv.id}')" class="msg-btn msg-btn-ghost" style="color:#DC2626;padding:8px 12px;font-size:12.5px;" title="Leave this group">
+                🚪 Leave Group
+              </button>
+            `}
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button onclick="document.getElementById('msgEditGroupModal').remove()" class="msg-btn msg-btn-ghost" style="padding:8px 14px;">Cancel</button>
+            <button onclick="window.MessengerApp.submitUpdateGroup('${conv.id}')" class="msg-btn msg-btn-primary" style="padding:8px 18px;">💾 Save Changes</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+  }
+
+  function updateEditGroupSelectedCount() {
+    const checked = document.querySelectorAll('.edit-group-member-cb:checked');
+    const label = document.getElementById('editGroupSelectedCount');
+    if (label) label.textContent = `${checked.length} selected`;
+  }
+
+  async function submitUpdateGroup(convId) {
+    const titleInput = document.getElementById('editGroupTitle');
+    const title = titleInput ? titleInput.value.trim() : '';
+    if (!title) {
+      alert('Please enter a group name.');
+      return;
+    }
+
+    const checkedBoxes = Array.from(document.querySelectorAll('.edit-group-member-cb:checked'));
+    const memberIds = checkedBoxes.map(cb => Number(cb.value));
+
+    try {
+      const res = await apiCall(`/api/chat/conversations/group/${convId}/update`, {
+        method: 'POST',
+        body: {
+          title,
+          member_employee_ids: memberIds
+        }
+      });
+      if (res && res.ok) {
+        document.getElementById('msgEditGroupModal')?.remove();
+        await loadConversations();
+        // Update open floating chat if open
+        if (state.openChats[convId]) {
+          state.openChats[convId].conv.title = title;
+          state.openChats[convId].conv.raw_title = title;
+          renderChatsDock();
+        }
+      } else {
+        alert(res?.error || 'Failed to update group.');
+      }
+    } catch (e) {
+      alert('Error updating group: ' + e.message);
+    }
+  }
+
+  async function confirmDeleteGroup(convId, groupTitle) {
+    const ok = confirm(`Are you sure you want to permanently delete the group "${groupTitle || 'this group'}"?\n\nThis will remove the group and all its message history for all members.`);
+    if (!ok) return;
+
+    try {
+      const res = await apiCall(`/api/chat/conversations/group/${convId}/delete`, {
+        method: 'POST'
+      });
+      if (res && res.ok) {
+        document.getElementById('msgEditGroupModal')?.remove();
+        closeFloatingChat(convId);
+        await loadConversations();
+      } else {
+        alert(res?.error || 'Failed to delete group.');
+      }
+    } catch (e) {
+      alert('Error deleting group: ' + e.message);
+    }
+  }
+
+  async function leaveGroup(convId) {
+    const ok = confirm('Are you sure you want to leave this group?');
+    if (!ok) return;
+
+    try {
+      const res = await apiCall(`/api/chat/conversations/group/${convId}/leave`, {
+        method: 'POST'
+      });
+      if (res && res.ok) {
+        document.getElementById('msgEditGroupModal')?.remove();
+        closeFloatingChat(convId);
+        await loadConversations();
+      } else {
+        alert(res?.error || 'Failed to leave group.');
+      }
+    } catch (e) {
+      alert('Error leaving group: ' + e.message);
     }
   }
 
@@ -2367,6 +2565,11 @@
     openNewGroupModal,
     updateGroupSelectedCount,
     submitCreateGroup,
+    openEditGroupModal,
+    updateEditGroupSelectedCount,
+    submitUpdateGroup,
+    confirmDeleteGroup,
+    leaveGroup,
     startDirectChatWithEmployee,
     startCallWithEmployee,
     respondIncomingCall,
