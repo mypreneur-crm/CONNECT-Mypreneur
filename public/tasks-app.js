@@ -748,7 +748,12 @@
         const creatorId = String(t.created_by_employee_id || t.creator_user_id || '');
         const creatorName = String(t.creator_name || t.created_by_name || '').toLowerCase();
         const target = String(tm.assignedByFilter).toLowerCase();
-        return creatorId === target || creatorName.includes(target);
+        const targetMember = (tm.teamMembers || []).find(m => String(m.employee_id) === target || String(m.id) === target);
+        const targetMemberName = targetMember ? String(targetMember.name).toLowerCase() : '';
+
+        return creatorId === target || 
+               creatorName.includes(target) || 
+               (targetMemberName && (creatorName.includes(targetMemberName) || targetMemberName.includes(creatorName)));
       });
     }
 
@@ -768,6 +773,7 @@
 
     // Extract unique assigners/creators for the filter dropdown
     const assignersMap = new Map();
+    // 1. Any creator that actually created a task in current dataset
     tm.tasks.forEach(t => {
       const cid = t.created_by_employee_id || t.creator_user_id;
       const cname = t.creator_name || t.created_by_name;
@@ -775,12 +781,11 @@
         assignersMap.set(String(cid), cname);
       }
     });
-    (tm.teamMembers || []).forEach(m => {
+    // 2. Include ALL active team members so any staff can be filtered
+    const sortedMembers = [...(tm.teamMembers || [])].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    sortedMembers.forEach(m => {
       if (m.employee_id && m.name && !assignersMap.has(String(m.employee_id))) {
-        const desig = String(m.designation || '').toLowerCase();
-        if (desig.includes('admin') || desig.includes('manager') || desig.includes('lead') || desig.includes('head') || desig.includes('ceo') || desig.includes('director')) {
-          assignersMap.set(String(m.employee_id), m.name);
-        }
+        assignersMap.set(String(m.employee_id), m.name);
       }
     });
 
@@ -799,13 +804,13 @@
           <input type="text" placeholder="Search tasks or code..." value="${escHtml(tm.searchQuery)}" oninput="tmSetBoardSearch(this.value)" style="padding:7px 14px;border:1px solid var(--border);border-radius:8px;width:200px;">
           
           ${admin ? `
-          <!-- Resource / Staff Selector (Admin, CEO, Manager, Lead, Super Admin, Director) -->
-          <select onchange="tmSetAssigneeFilter(this.value)" style="padding:7px 12px;border:1.5px solid var(--cyan);border-radius:8px;font-weight:700;background:#F0F9FF;color:var(--navy);" title="Filter by assigned resource">
-            <option value="${myEmpId}" ${String(tm.assigneeFilter) === String(myEmpId) ? 'selected' : ''}>⭐ My Tasks (Default)</option>
-            <option value="all" ${tm.assigneeFilter === 'all' ? 'selected' : ''}>🌐 All Resources (${tm.teamMembers.length})</option>
+          <!-- Resource / Staff Selector (Who is doing the task) -->
+          <select onchange="tmSetAssigneeFilter(this.value)" style="padding:7px 12px;border:1.5px solid var(--cyan);border-radius:8px;font-weight:700;background:#F0F9FF;color:var(--navy);" title="Filter by assigned resource (Who does the task)">
+            <option value="${myEmpId}" ${String(tm.assigneeFilter) === String(myEmpId) ? 'selected' : ''}>⭐ My Tasks (Assigned to Me)</option>
+            <option value="all" ${tm.assigneeFilter === 'all' ? 'selected' : ''}>🌐 All Resources / Staff (${tm.teamMembers.length})</option>
             ${tm.teamMembers.filter(m => String(m.employee_id) !== String(myEmpId)).map(m => `
               <option value="${m.employee_id}" ${String(tm.assigneeFilter) === String(m.employee_id) ? 'selected' : ''}>
-                👤 ${escHtml(m.name)} (${escHtml(m.department || 'Staff')})
+                👤 Assigned To: ${escHtml(m.name)} (${escHtml(m.department || 'Staff')})
               </option>
             `).join('')}
           </select>

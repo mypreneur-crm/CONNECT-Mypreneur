@@ -459,7 +459,7 @@
         justify-content: center;
         box-shadow: 0 10px 25px -5px rgba(2, 132, 199, 0.4), 0 8px 10px -6px rgba(2, 132, 199, 0.2);
         cursor: pointer;
-        z-index: 9990;
+        z-index: 99990;
         transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s;
         border: none;
       }
@@ -503,7 +503,7 @@
         box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.06);
         display: flex;
         flex-direction: column;
-        z-index: 9991;
+        z-index: 99991;
         overflow: hidden;
         animation: msgPopIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
       }
@@ -520,7 +520,7 @@
         display: flex;
         align-items: flex-end;
         gap: 14px;
-        z-index: 10005 !important;
+        z-index: 100050 !important;
         pointer-events: none;
         transition: right 0.22s cubic-bezier(0.16, 1, 0.3, 1);
       }
@@ -529,7 +529,7 @@
       }
       .msg-chat-box {
         position: relative;
-        z-index: 10010;
+        z-index: 100060 !important;
         width: 340px;
         height: 440px;
         background: #FFFFFF;
@@ -548,6 +548,24 @@
       @keyframes msgSlideUp {
         from { opacity: 0; transform: translateY(40px); }
         to { opacity: 1; transform: translateY(0); }
+      }
+
+      @media (max-width: 768px) {
+        .msg-panel-window {
+          right: 12px;
+          bottom: 80px;
+          width: calc(100vw - 24px);
+        }
+        .msg-chats-dock {
+          right: 12px !important;
+          left: 12px !important;
+        }
+        .msg-chats-dock.panel-open {
+          right: 12px !important;
+        }
+        .msg-chat-box {
+          width: 100%;
+        }
       }
 
       /* Buttons & Pills */
@@ -1006,6 +1024,10 @@
 
   async function openFloatingChat(convId) {
     toggleMessenger(false);
+    const panel = document.getElementById('msgPanelWindow');
+    if (panel) panel.style.display = 'none';
+    state.messengerOpen = false;
+
     if (!state.currentUser) {
       const u = window.session || (typeof session !== 'undefined' ? session : null);
       if (u) init(u);
@@ -1059,6 +1081,10 @@
 
   async function startDirectChatWithEmployee(empId) {
     toggleMessenger(false);
+    const panel = document.getElementById('msgPanelWindow');
+    if (panel) panel.style.display = 'none';
+    state.messengerOpen = false;
+
     if (!state.currentUser) {
       const u = window.session || (typeof session !== 'undefined' ? session : null);
       if (u) init(u);
@@ -1101,10 +1127,10 @@
 
   function bringChatToFront(convId) {
     document.querySelectorAll('.msg-chat-box').forEach(b => {
-      b.style.zIndex = '10010';
+      b.style.zIndex = '100060';
     });
     const box = document.getElementById(`chatBox_${convId}`);
-    if (box) box.style.zIndex = '10025';
+    if (box) box.style.zIndex = '100080';
   }
 
   function renderChatsDock() {
@@ -1592,6 +1618,10 @@
 
   async function startCallWithEmployee(receiverEmpId, callType = 'AUDIO') {
     toggleMessenger(false);
+    const panel = document.getElementById('msgPanelWindow');
+    if (panel) panel.style.display = 'none';
+    state.messengerOpen = false;
+
     if (!state.currentUser) {
       const u = window.session || (typeof session !== 'undefined' ? session : null);
       if (u) init(u);
