@@ -1943,7 +1943,7 @@ async function serveStatic(req, res, url) {
   res.writeHead(200, {
     'Content-Type': staticMime(file),
     'Content-Length': stat.size,
-    'Cache-Control': (file.endsWith('.html') || file.endsWith('.js') || file.endsWith('.css')) ? 'no-cache, must-revalidate' : 'public, max-age=3600'
+    'Cache-Control': (file.endsWith('.html') || file.endsWith('.js') || file.endsWith('.css')) ? 'no-cache, no-store, must-revalidate, max-age=0' : 'public, max-age=3600'
   });
   if (req.method === 'HEAD') return res.end();
   const stream = fs.createReadStream(file);

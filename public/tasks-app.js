@@ -57,30 +57,41 @@
   }
 
   function isExecutiveLeader(target) {
-    const u = target || (typeof session !== 'undefined' ? session : null);
+    const u = target || (typeof session !== 'undefined' ? session : null) || (typeof window !== 'undefined' ? window.session : null);
     if (!u) return false;
-    const role = String(u.role || '').toLowerCase();
-    if (role === 'admin' || role === 'ceo' || role === 'director' || role.includes('admin') || role.includes('super') || role.includes('ceo') || role.includes('director')) {
-      return true;
-    }
-    const roles = (u.sourceRoles || []).map(r => String(r).toUpperCase());
-    if (roles.some(r => r.includes('ADMIN') || r.includes('SUPER') || r.includes('DIRECTOR') || r.includes('CEO'))) {
-      return true;
-    }
-    const title = String(u.title || u.designation || '').toUpperCase();
-    if (title.includes('DIRECTOR') || title.includes('CEO') || title.includes('CHIEF EXECUTIVE') || title.includes('ADMIN') || title.includes('MANAGING DIRECTOR')) {
-      return true;
-    }
-    const team = String(u.sourceTeam || u.team || '').toUpperCase();
-    if (team.includes('DIRECTOR') || team.includes('CEO') || team === 'MANAGEMENT' || team === 'ADMIN') {
-      return true;
-    }
+
+    // Check specific leadership usernames/names
     const name = String(u.name || '').toUpperCase();
     const uName = String(u.username || '').toUpperCase();
-    if (name.includes('ADMIN') || name.includes('SUPER ADMIN') || name.includes('SURESH RADHAKRISHNAN') || name.includes('MANOJ KOMBISSAN') ||
+    if (name.includes('SUPER ADMIN') || name.includes('SURESH RADHAKRISHNAN') || name.includes('MANOJ KOMBISSAN') ||
         uName === 'ADMIN' || uName === 'SUPERADMIN' || uName === 'SURESH' || uName === 'MANOJ') {
       return true;
     }
+
+    // Role check: ONLY system admin, director, ceo (EXCLUDE operations_admin, sales_admin, hr_admin, digital_admin)
+    const role = String(u.role || '').toLowerCase().trim();
+    if (role === 'admin' || role === 'superadmin' || role === 'super_admin' || role === 'director' || role === 'ceo') {
+      return true;
+    }
+
+    // Title / Designation check: Director, CEO, Managing Director, Chief Executive, Admin
+    const title = String(u.title || u.designation || '').toUpperCase().trim();
+    if (title.includes('DIRECTOR') || title.includes('CEO') || title.includes('CHIEF EXECUTIVE') || title === 'ADMIN' || title === 'SUPER ADMIN' || title.includes('MANAGING DIRECTOR')) {
+      return true;
+    }
+
+    // Source roles in DB: ADMIN, SUPER_ADMIN, DIRECTOR, CEO
+    const roles = (u.sourceRoles || []).map(r => String(r).toUpperCase().trim());
+    if (roles.some(r => r === 'ADMIN' || r === 'SUPER_ADMIN' || r === 'SUPERADMIN' || r === 'SUPER ADMIN' || r === 'DIRECTOR' || r === 'CEO')) {
+      return true;
+    }
+
+    // Source team or assigned team: DIRECTORS, CEO, MANAGEMENT
+    const team = String(u.sourceTeam || u.team || '').toUpperCase().trim();
+    if (team === 'DIRECTOR' || team === 'DIRECTORS' || team === 'CEO' || team === 'MANAGEMENT' || team === 'EXECUTIVE') {
+      return true;
+    }
+
     return false;
   }
 
