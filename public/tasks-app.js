@@ -28,6 +28,7 @@
     statusFilter: 'all',
     priorityFilter: 'all',
     assigneeFilter: 'all',
+    assignedByFilter: 'all',
     dueDateFilter: 'all',
     filteredEmployeeCapacity: null,
     filteredEmployeeCrmWorkload: null,
@@ -740,6 +741,17 @@
       // Regular employee can ONLY see their own tasks
       filtered = filtered.filter(t => Number(t.owner_employee_id) === Number(myEmpId));
     }
+
+    // Assigned By (Created By) Filter
+    if (tm.assignedByFilter && tm.assignedByFilter !== 'all') {
+      filtered = filtered.filter(t => {
+        const creatorId = String(t.created_by_employee_id || t.creator_user_id || '');
+        const creatorName = String(t.creator_name || t.created_by_name || '').toLowerCase();
+        const target = String(tm.assignedByFilter).toLowerCase();
+        return creatorId === target || creatorName.includes(target);
+      });
+    }
+
     if (tm.teamFilter !== 'all') {
       filtered = filtered.filter(t => String(t.team_id) === String(tm.teamFilter));
     }
@@ -754,6 +766,26 @@
       filtered = filtered.filter(t => t.title.toLowerCase().includes(q) || t.task_code.toLowerCase().includes(q));
     }
 
+    // Extract unique assigners/creators for the filter dropdown
+    const assignersMap = new Map();
+    tm.tasks.forEach(t => {
+      const cid = t.created_by_employee_id || t.creator_user_id;
+      const cname = t.creator_name || t.created_by_name;
+      if (cid && cname && !assignersMap.has(String(cid))) {
+        assignersMap.set(String(cid), cname);
+      }
+    });
+    (tm.teamMembers || []).forEach(m => {
+      if (m.employee_id && m.name && !assignersMap.has(String(m.employee_id))) {
+        const desig = String(m.designation || '').toLowerCase();
+        if (desig.includes('admin') || desig.includes('manager') || desig.includes('lead') || desig.includes('head') || desig.includes('ceo') || desig.includes('director')) {
+          assignersMap.set(String(m.employee_id), m.name);
+        }
+      }
+    });
+
+    const selectedAssignerName = tm.assignedByFilter !== 'all' ? (assignersMap.get(String(tm.assignedByFilter)) || tm.assignedByFilter) : null;
+
     const colOpen = filtered.filter(t => t.status === 'OPEN' || t.status === 'READY');
     const colProgress = filtered.filter(t => t.status === 'IN_PROGRESS');
     const colReview = filtered.filter(t => t.status === 'IN_REVIEW');
@@ -764,11 +796,11 @@
       <!-- Filter Bar -->
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;background:#FFF;padding:14px 18px;border-radius:12px;border:1px solid var(--border);">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-          <input type="text" placeholder="Search tasks or code..." value="${escHtml(tm.searchQuery)}" oninput="tmSetBoardSearch(this.value)" style="padding:7px 14px;border:1px solid var(--border);border-radius:8px;width:220px;">
+          <input type="text" placeholder="Search tasks or code..." value="${escHtml(tm.searchQuery)}" oninput="tmSetBoardSearch(this.value)" style="padding:7px 14px;border:1px solid var(--border);border-radius:8px;width:200px;">
           
           ${admin ? `
           <!-- Resource / Staff Selector (Admin, CEO, Manager, Lead, Super Admin, Director) -->
-          <select onchange="tmSetAssigneeFilter(this.value)" style="padding:7px 12px;border:1.5px solid var(--cyan);border-radius:8px;font-weight:700;background:#F0F9FF;color:var(--navy);">
+          <select onchange="tmSetAssigneeFilter(this.value)" style="padding:7px 12px;border:1.5px solid var(--cyan);border-radius:8px;font-weight:700;background:#F0F9FF;color:var(--navy);" title="Filter by assigned resource">
             <option value="${myEmpId}" ${String(tm.assigneeFilter) === String(myEmpId) ? 'selected' : ''}>⭐ My Tasks (Default)</option>
             <option value="all" ${tm.assigneeFilter === 'all' ? 'selected' : ''}>🌐 All Resources (${tm.teamMembers.length})</option>
             ${tm.teamMembers.filter(m => String(m.employee_id) !== String(myEmpId)).map(m => `
@@ -778,6 +810,16 @@
             `).join('')}
           </select>
           ` : ''}
+
+          <!-- Assigned By Filter (Who assigned / created the task) -->
+          <select onchange="tmSetAssignedByFilter(this.value)" style="padding:7px 12px;border:1.5px solid ${tm.assignedByFilter !== 'all' ? '#8B5CF6' : 'var(--border)'};border-radius:8px;font-weight:${tm.assignedByFilter !== 'all' ? '700' : '500'};background:${tm.assignedByFilter !== 'all' ? '#F5F3FF' : '#FFF'};color:${tm.assignedByFilter !== 'all' ? '#6D28D9' : 'inherit'};" title="Filter tasks by who assigned/created them">
+            <option value="all" ${tm.assignedByFilter === 'all' ? 'selected' : ''}>✍️ All Assigners (Created By)</option>
+            ${Array.from(assignersMap.entries()).map(([id, name]) => `
+              <option value="${id}" ${String(tm.assignedByFilter) === String(id) ? 'selected' : ''}>
+                ✍️ Assigned by: ${escHtml(name)}
+              </option>
+            `).join('')}
+          </select>
 
           <select onchange="tmSetTeamFilter(this.value)" style="padding:7px 12px;border:1px solid var(--border);border-radius:8px;font-weight:500;">
             <option value="all" ${tm.teamFilter === 'all' ? 'selected' : ''}>All Teams</option>
@@ -809,7 +851,7 @@
         </div>
 
         <div style="font-size:13px;color:var(--muted);">
-          Showing <strong>${filtered.length}</strong> tasks ${admin ? (tm.assigneeFilter === 'all' ? 'for All Resources' : (String(tm.assigneeFilter) === String(myEmpId) ? 'for You (Default)' : 'for selected resource')) : 'assigned to you'}
+          Showing <strong>${filtered.length}</strong> tasks ${admin ? (tm.assigneeFilter === 'all' ? 'for All Resources' : (String(tm.assigneeFilter) === String(myEmpId) ? 'for You (Default)' : 'for selected resource')) : 'assigned to you'}${selectedAssignerName ? ` · Assigned by <strong>${escHtml(selectedAssignerName)}</strong>` : ''}
         </div>
       </div>
 
@@ -897,10 +939,15 @@
       ` : ''}
 
       <div class="task-card-meta">
-        <span style="font-weight:600;color:var(--navy);font-size:11.5px;">${escHtml(t.owner_name || 'Unassigned')}</span>
+        <span style="font-weight:600;color:var(--navy);font-size:11.5px;">👤 ${escHtml(t.owner_name || 'Unassigned')}</span>
         <div style="display:flex;align-items:center;gap:6px;">
           <span>⏱️ ${timeDisplay}</span>
         </div>
+      </div>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;padding-top:5px;border-top:1px dashed #E2E8F0;font-size:10.5px;color:#64748B;">
+        <span title="Task assigned / created by">✍️ By: <strong style="color:#0284C7;">${escHtml(t.creator_name || t.created_by_name || 'Admin')}</strong></span>
+        ${t.team_name ? `<span style="font-weight:600;color:#94A3B8;">${escHtml(t.team_name)}</span>` : ''}
       </div>
     </div>
     `;
@@ -920,6 +967,10 @@
   };
   window.tmSetPriorityFilter = function(val) {
     tm.priorityFilter = val;
+    tmRenderTab();
+  };
+  window.tmSetAssignedByFilter = function(val) {
+    tm.assignedByFilter = val;
     tmRenderTab();
   };
   function renderFilteredEmployeeWorkloadBanner(filteredTasks) {
@@ -2533,7 +2584,11 @@
               </div>
               <div>
                 <span style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600;">Assignee</span>
-                <div style="font-size:13px;font-weight:700;color:var(--navy);margin-top:6px;">${escHtml(t.owner_name || 'Unassigned')}</div>
+                <div style="font-size:13px;font-weight:700;color:var(--navy);margin-top:6px;">👤 ${escHtml(t.owner_name || 'Unassigned')}</div>
+              </div>
+              <div>
+                <span style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600;">Assigned By</span>
+                <div style="font-size:13px;font-weight:700;color:#0284C7;margin-top:6px;">✍️ ${escHtml(t.creator_name || t.created_by_name || 'Admin')}</div>
               </div>
               <div>
                 <span style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600;">Team</span>

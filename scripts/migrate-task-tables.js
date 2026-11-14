@@ -82,6 +82,14 @@ async function runMigration() {
     console.warn("Could not modify event_date:", e.message);
   }
 
+  // Ensure existing tasks with NULL creator_user_id have default creator (Admin, employee_id 1)
+  try {
+    await db.run("UPDATE connect_task_tasks SET creator_user_id = 1 WHERE creator_user_id IS NULL");
+    console.log("✓ Backfilled NULL creator_user_id with 1 on connect_task_tasks");
+  } catch (e) {
+    console.warn("Could not backfill creator_user_id:", e.message);
+  }
+
   // Ensure connect_employee_messages table exists
   try {
     await db.run(`
