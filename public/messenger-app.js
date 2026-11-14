@@ -1612,9 +1612,80 @@
   const rtcConfig = {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun.cloudflare.com:3478' },
       { urls: 'stun:global.stun.twilio.com:3478' }
-    ]
+    ],
+    iceCandidatePoolSize: 10
   };
+
+  async function applyPeerCandidates(peerCandidates) {
+    if (!state.activeCall || !state.activeCall.pc || !peerCandidates || !Array.isArray(peerCandidates)) return;
+    const pc = state.activeCall.pc;
+
+    for (const cand of peerCandidates) {
+      if (!cand || !cand.candidate) continue;
+      const key = `${cand.candidate}_${cand.sdpMid}_${cand.sdpMLineIndex}`;
+      if (state.activeCall.processedCandidates && state.activeCall.processedCandidates.has(key)) continue;
+      if (state.activeCall.processedCandidates) state.activeCall.processedCandidates.add(key);
+
+      if (!pc.remoteDescription || !pc.remoteDescription.type) {
+        if (state.activeCall.pendingPeerCandidates) state.activeCall.pendingPeerCandidates.push(cand);
+        continue;
+      }
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(cand));
+      } catch (err) {
+        console.warn('[WebRTC] Error adding ICE candidate:', err);
+      }
+    }
+  }
+
+  async function flushPendingPeerCandidates() {
+    if (!state.activeCall || !state.activeCall.pc || !state.activeCall.pc.remoteDescription) return;
+    const pc = state.activeCall.pc;
+    while (state.activeCall.pendingPeerCandidates && state.activeCall.pendingPeerCandidates.length > 0) {
+      const cand = state.activeCall.pendingPeerCandidates.shift();
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(cand));
+      } catch (err) {
+        console.warn('[WebRTC] Error flushing ICE candidate:', err);
+      }
+    }
+  }
+
+  function bindMediaStreams() {
+    const call = state.activeCall;
+    if (!call) return;
+
+    // 1. Remote Audio Stream (Always plays for both Audio and Video calls)
+    const remoteAudio = document.getElementById('msgRemoteAudio');
+    if (remoteAudio && call.remoteStream) {
+      if (remoteAudio.srcObject !== call.remoteStream) {
+        remoteAudio.srcObject = call.remoteStream;
+      }
+      remoteAudio.muted = false;
+      remoteAudio.volume = 1.0;
+      remoteAudio.play().catch(e => console.warn('[WebRTC] Remote audio autoplay error:', e));
+    }
+
+    // 2. Video Streams (For Video calls)
+    if (call.type === 'VIDEO') {
+      const localVid = document.getElementById('msgLocalVideo');
+      const remoteVid = document.getElementById('msgRemoteVideo');
+
+      if (localVid && call.localStream && localVid.srcObject !== call.localStream) {
+        localVid.srcObject = call.localStream;
+        localVid.muted = true;
+        localVid.play().catch(() => {});
+      }
+      if (remoteVid && call.remoteStream && remoteVid.srcObject !== call.remoteStream) {
+        remoteVid.srcObject = call.remoteStream;
+        remoteVid.play().catch(e => console.warn('[WebRTC] Remote video autoplay error:', e));
+      }
+    }
+  }
 
   async function startCallWithEmployee(receiverEmpId, callType = 'AUDIO') {
     toggleMessenger(false);
@@ -1632,18 +1703,21 @@
 
     try {
       const constraints = {
-        audio: true,
-        video: callType === 'VIDEO' ? { width: { ideal: 640 }, height: { ideal: 480 } } : false
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        },
+        video: callType === 'VIDEO' ? {
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+          frameRate: { ideal: 30, max: 30 }
+        } : false
       };
       const localStream = await navigator.mediaDevices.getUserMedia(constraints);
 
       const pc = new RTCPeerConnection(rtcConfig);
       localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-
-      const remoteStream = new MediaStream();
-      pc.ontrack = event => {
-        event.streams[0].getTracks().forEach(track => remoteStream.addTrack(track));
-      };
 
       state.activeCall = {
         callId: null,
@@ -1653,22 +1727,61 @@
         isCaller: true,
         pc,
         localStream,
-        remoteStream,
+        remoteStream: null,
         status: 'CALLING',
         callSeconds: 0,
-        timerInterval: null
+        timerInterval: null,
+        processedCandidates: new Set(),
+        pendingPeerCandidates: [],
+        earlyLocalCandidates: []
+      };
+
+      pc.ontrack = event => {
+        console.log('[WebRTC] ontrack received:', event.track.kind, event.streams);
+        let stream = null;
+        if (event.streams && event.streams[0]) {
+          stream = event.streams[0];
+        } else {
+          if (!state.activeCall.remoteStream) {
+            state.activeCall.remoteStream = new MediaStream();
+          }
+          state.activeCall.remoteStream.addTrack(event.track);
+          stream = state.activeCall.remoteStream;
+        }
+        state.activeCall.remoteStream = stream;
+        bindMediaStreams();
+      };
+
+      pc.onicecandidate = event => {
+        if (event.candidate) {
+          if (state.activeCall && state.activeCall.callId) {
+            sendIceCandidate(state.activeCall.callId, event.candidate);
+          } else if (state.activeCall) {
+            state.activeCall.earlyLocalCandidates.push(event.candidate);
+          }
+        }
+      };
+
+      pc.onconnectionstatechange = () => {
+        console.log('[WebRTC] Connection state:', pc.connectionState);
+        const statusBadge = document.getElementById('msgCallStatusBadge');
+        if (statusBadge) {
+          if (pc.connectionState === 'connected') {
+            statusBadge.textContent = 'CONNECTED';
+            statusBadge.style.background = '#059669';
+          } else if (pc.connectionState === 'connecting') {
+            statusBadge.textContent = 'CONNECTING...';
+            statusBadge.style.background = '#D97706';
+          } else if (['failed', 'disconnected'].includes(pc.connectionState)) {
+            statusBadge.textContent = 'RECONNECTING...';
+            statusBadge.style.background = '#DC2626';
+          }
+        }
       };
 
       // Create WebRTC Offer
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-
-      // Handle local ICE candidates
-      pc.onicecandidate = event => {
-        if (event.candidate && state.activeCall?.callId) {
-          sendIceCandidate(state.activeCall.callId, event.candidate);
-        }
-      };
 
       // Send initiate call request to server
       const data = await apiCall('/api/chat/call/initiate', {
@@ -1683,6 +1796,15 @@
       if (!data.callId && !data.ok) throw new Error(data.error || 'Failed to start call');
 
       state.activeCall.callId = data.callId;
+
+      // Flush early local candidates gathered before callId was returned
+      if (state.activeCall.earlyLocalCandidates && state.activeCall.earlyLocalCandidates.length > 0) {
+        for (const cand of state.activeCall.earlyLocalCandidates) {
+          sendIceCandidate(data.callId, cand);
+        }
+        state.activeCall.earlyLocalCandidates = [];
+      }
+
       startRingtone();
       renderActiveCallModal();
 
@@ -1712,6 +1834,7 @@
             state.activeCall.status = 'CONNECTED';
             const answer = JSON.parse(data.sdpAnswer);
             await state.activeCall.pc.setRemoteDescription(new RTCSessionDescription(answer));
+            await flushPendingPeerCandidates();
 
             // Start timer
             startCallDurationTimer();
@@ -1724,12 +1847,8 @@
           }
 
           // Ingest peer candidates
-          if (data.peerCandidates && state.activeCall?.pc) {
-            for (const cand of data.peerCandidates) {
-              try {
-                await state.activeCall.pc.addIceCandidate(new RTCIceCandidate(cand));
-              } catch (e) { }
-            }
+          if (data.peerCandidates) {
+            await applyPeerCandidates(data.peerCandidates);
           }
         }
       } catch (e) { }
@@ -1809,18 +1928,21 @@
     // ACCEPT Call
     try {
       const constraints = {
-        audio: true,
-        video: call.callType === 'VIDEO' ? { width: { ideal: 640 }, height: { ideal: 480 } } : false
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        },
+        video: call.callType === 'VIDEO' ? {
+          width: { ideal: 640 },
+          height: { ideal: 480 },
+          frameRate: { ideal: 30, max: 30 }
+        } : false
       };
       const localStream = await navigator.mediaDevices.getUserMedia(constraints);
 
       const pc = new RTCPeerConnection(rtcConfig);
       localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-
-      const remoteStream = new MediaStream();
-      pc.ontrack = event => {
-        event.streams[0].getTracks().forEach(track => remoteStream.addTrack(track));
-      };
 
       state.activeCall = {
         callId: call.callId,
@@ -1830,21 +1952,59 @@
         isCaller: false,
         pc,
         localStream,
-        remoteStream,
+        remoteStream: null,
         status: 'CONNECTED',
         callSeconds: 0,
-        timerInterval: null
+        timerInterval: null,
+        processedCandidates: new Set(),
+        pendingPeerCandidates: [],
+        earlyLocalCandidates: []
+      };
+
+      pc.ontrack = event => {
+        console.log('[WebRTC] Callee ontrack received:', event.track.kind, event.streams);
+        let stream = null;
+        if (event.streams && event.streams[0]) {
+          stream = event.streams[0];
+        } else {
+          if (!state.activeCall.remoteStream) {
+            state.activeCall.remoteStream = new MediaStream();
+          }
+          state.activeCall.remoteStream.addTrack(event.track);
+          stream = state.activeCall.remoteStream;
+        }
+        state.activeCall.remoteStream = stream;
+        bindMediaStreams();
       };
 
       pc.onicecandidate = event => {
-        if (event.candidate) {
-          sendIceCandidate(call.callId, event.candidate);
+        if (event.candidate && state.activeCall?.callId) {
+          sendIceCandidate(state.activeCall.callId, event.candidate);
+        }
+      };
+
+      pc.onconnectionstatechange = () => {
+        console.log('[WebRTC] Callee connection state:', pc.connectionState);
+        const statusBadge = document.getElementById('msgCallStatusBadge');
+        if (statusBadge) {
+          if (pc.connectionState === 'connected') {
+            statusBadge.textContent = 'CONNECTED';
+            statusBadge.style.background = '#059669';
+          } else if (pc.connectionState === 'connecting') {
+            statusBadge.textContent = 'CONNECTING...';
+            statusBadge.style.background = '#D97706';
+          } else if (['failed', 'disconnected'].includes(pc.connectionState)) {
+            statusBadge.textContent = 'RECONNECTING...';
+            statusBadge.style.background = '#DC2626';
+          }
         }
       };
 
       // Set remote offer & create answer
       const offer = JSON.parse(call.sdpOffer);
       await pc.setRemoteDescription(new RTCSessionDescription(offer));
+      await flushPendingPeerCandidates();
+
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
 
@@ -1885,10 +2045,8 @@
             clearInterval(interval);
             alert('Call ended by peer');
             endCall();
-          } else if (data.peerCandidates && state.activeCall?.pc) {
-            for (const cand of data.peerCandidates) {
-              try { await state.activeCall.pc.addIceCandidate(new RTCIceCandidate(cand)); } catch (e) { }
-            }
+          } else if (data.peerCandidates) {
+            await applyPeerCandidates(data.peerCandidates);
           }
         }
       } catch (e) { }
@@ -1924,6 +2082,9 @@
 
     modal.innerHTML = `
       <div class="msg-modal-box" style="max-width:${isVideo ? '720px' : '420px'};background:#0F172A;color:#FFF;position:relative;">
+        <!-- Hidden Audio Element to ensure Remote Sound ALWAYS plays -->
+        <audio id="msgRemoteAudio" autoplay playsinline style="display:none;"></audio>
+
         <!-- Header -->
         <div style="padding:14px 20px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.1);">
           <div style="display:flex;align-items:center;gap:10px;">
@@ -1933,7 +2094,7 @@
               <div style="font-size:11px;color:#94A3B8;" id="msgCallTimerLabel">${call.status === 'CONNECTED' ? formatCallTimer(call.callSeconds) : 'Connecting...'}</div>
             </div>
           </div>
-          <span style="font-size:12px;background:${call.status === 'CONNECTED' ? '#059669' : '#D97706'};padding:3px 8px;border-radius:10px;font-weight:700;">
+          <span id="msgCallStatusBadge" style="font-size:12px;background:${call.status === 'CONNECTED' ? '#059669' : '#D97706'};padding:3px 8px;border-radius:10px;font-weight:700;">
             ${call.status}
           </span>
         </div>
@@ -1980,13 +2141,8 @@
       </div>
     `;
 
-    // Bind streams to video tags
-    if (isVideo) {
-      const localVid = document.getElementById('msgLocalVideo');
-      const remoteVid = document.getElementById('msgRemoteVideo');
-      if (localVid && call.localStream) localVid.srcObject = call.localStream;
-      if (remoteVid && call.remoteStream) remoteVid.srcObject = call.remoteStream;
-    }
+    // Immediately bind audio and video elements to active streams
+    bindMediaStreams();
   }
 
   function startCallDurationTimer() {
