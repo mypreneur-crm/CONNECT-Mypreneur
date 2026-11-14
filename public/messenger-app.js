@@ -520,19 +520,21 @@
         display: flex;
         align-items: flex-end;
         gap: 14px;
-        z-index: 10005;
+        z-index: 10005 !important;
         pointer-events: none;
         transition: right 0.22s cubic-bezier(0.16, 1, 0.3, 1);
       }
       .msg-chats-dock.panel-open {
-        right: 418px;
+        right: 420px !important;
       }
       .msg-chat-box {
+        position: relative;
+        z-index: 10010;
         width: 340px;
         height: 440px;
         background: #FFFFFF;
         border-radius: 14px 14px 0 0;
-        box-shadow: 0 -4px 20px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.06);
+        box-shadow: 0 -4px 25px rgba(0,0,0,0.2), 0 0 0 1px rgba(0,0,0,0.08);
         display: flex;
         flex-direction: column;
         overflow: hidden;
@@ -746,8 +748,13 @@
       }
     }
     if (dock) {
-      if (state.messengerOpen) dock.classList.add('panel-open');
-      else dock.classList.remove('panel-open');
+      if (state.messengerOpen) {
+        dock.classList.add('panel-open');
+        dock.style.right = '420px';
+      } else {
+        dock.classList.remove('panel-open');
+        dock.style.right = '96px';
+      }
     }
   }
 
@@ -1051,6 +1058,7 @@
   }
 
   async function startDirectChatWithEmployee(empId) {
+    toggleMessenger(false);
     if (!state.currentUser) {
       const u = window.session || (typeof session !== 'undefined' ? session : null);
       if (u) init(u);
@@ -1091,9 +1099,25 @@
     }
   }
 
+  function bringChatToFront(convId) {
+    document.querySelectorAll('.msg-chat-box').forEach(b => {
+      b.style.zIndex = '10010';
+    });
+    const box = document.getElementById(`chatBox_${convId}`);
+    if (box) box.style.zIndex = '10025';
+  }
+
   function renderChatsDock() {
     const dock = document.getElementById('msgChatsDock');
     if (!dock) return;
+
+    if (state.messengerOpen) {
+      dock.classList.add('panel-open');
+      dock.style.right = '420px';
+    } else {
+      dock.classList.remove('panel-open');
+      dock.style.right = '96px';
+    }
 
     dock.innerHTML = Object.values(state.openChats).map(chat => {
       const conv = chat.conv;
@@ -1102,7 +1126,7 @@
       const presence = targetEmp ? (state.presenceMap[targetEmp.employee_id]?.status || targetEmp.status || 'OFFLINE') : 'OFFLINE';
 
       return `
-        <div class="msg-chat-box ${chat.minimized ? 'minimized' : ''}" id="chatBox_${chat.convId}" data-conv-id="${chat.convId}">
+        <div class="msg-chat-box ${chat.minimized ? 'minimized' : ''}" id="chatBox_${chat.convId}" data-conv-id="${chat.convId}" onmousedown="window.MessengerApp.bringChatToFront('${chat.convId}')">
           <!-- Chat Header -->
           <div style="padding:10px 14px;background:#0284C7;color:#FFF;display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;" onclick="window.MessengerApp.toggleMinimizeChat('${chat.convId}', event)">
             <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">
@@ -2142,6 +2166,7 @@
     init,
     destroy,
     toggleMessenger,
+    bringChatToFront,
     switchTab,
     handleSearch,
     changeMyStatus,
