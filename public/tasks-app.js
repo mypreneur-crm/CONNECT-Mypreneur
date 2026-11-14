@@ -56,6 +56,34 @@
     return false;
   }
 
+  function isExecutiveLeader(target) {
+    const u = target || (typeof session !== 'undefined' ? session : null);
+    if (!u) return false;
+    const role = String(u.role || '').toLowerCase();
+    if (role === 'admin' || role === 'ceo' || role === 'director' || role.includes('admin') || role.includes('super') || role.includes('ceo') || role.includes('director')) {
+      return true;
+    }
+    const roles = (u.sourceRoles || []).map(r => String(r).toUpperCase());
+    if (roles.some(r => r.includes('ADMIN') || r.includes('SUPER') || r.includes('DIRECTOR') || r.includes('CEO'))) {
+      return true;
+    }
+    const title = String(u.title || u.designation || '').toUpperCase();
+    if (title.includes('DIRECTOR') || title.includes('CEO') || title.includes('CHIEF EXECUTIVE') || title.includes('ADMIN') || title.includes('MANAGING DIRECTOR')) {
+      return true;
+    }
+    const team = String(u.sourceTeam || u.team || '').toUpperCase();
+    if (team.includes('DIRECTOR') || team.includes('CEO') || team === 'MANAGEMENT' || team === 'ADMIN') {
+      return true;
+    }
+    const name = String(u.name || '').toUpperCase();
+    const uName = String(u.username || '').toUpperCase();
+    if (name.includes('ADMIN') || name.includes('SUPER ADMIN') || name.includes('SURESH RADHAKRISHNAN') || name.includes('MANOJ KOMBISSAN') ||
+        uName === 'ADMIN' || uName === 'SUPERADMIN' || uName === 'SURESH' || uName === 'MANOJ') {
+      return true;
+    }
+    return false;
+  }
+
   function formatMins(mins) {
     if (!mins || isNaN(mins)) return '0m';
     const m = Math.round(mins);
@@ -237,6 +265,7 @@
   // =========================================================================
   window.viewTasks = function() {
     const admin = isTaskAdmin();
+    const canApprove = isExecutiveLeader();
     return `
     <div class="task-manager-container">
       <!-- Active Timer Floating Banner -->
@@ -263,7 +292,7 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:24px;height:24px;color:var(--cyan);"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>
             Task Manager
           </h2>
-          <p>${admin ? 'Multi-Resource Capacity Engine, Workload Planner & Approvals' : 'My Daily Task Plan & 8-Hour Capacity Tracker'}</p>
+          <p>${canApprove ? 'Multi-Resource Capacity Engine, Workload Planner & Approvals' : (admin ? 'Multi-Resource Capacity Engine & Workload Planner' : 'My Daily Task Plan & 8-Hour Capacity Tracker')}</p>
         </div>
         <div class="tm-actions">
           <button class="btn btn-secondary" onclick="tmReloadData()" title="Refresh Tasks">
@@ -296,6 +325,8 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
           Event Projects
         </button>
+        ` : ''}
+        ${canApprove ? `
         <button class="tm-tab-btn" id="tabBtn-approvals" onclick="tmSwitchTab('approvals')">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
           Approvals
@@ -326,7 +357,15 @@
   async function tmLoadAll() {
     try {
       const admin = isTaskAdmin();
+      const exec = isExecutiveLeader();
       const myEmpId = (session && (session.employeeId || session.employee_id)) || null;
+
+      // On default, non-executive users are locked to their own work plan
+      if (!exec) {
+        tm.adminSelectedEmployeeId = 'self';
+        tm.adminSelectedEmployeeCapacity = null;
+        tm.adminSelectedEmployeeCrm = null;
+      }
 
       // On default, set assignee filter to logged-in employee
       if (admin) {
@@ -358,9 +397,9 @@
       // Update timer banner
       updateTimerBanner();
 
-      // Update approval pill
+      // Update approval pill (only visible to executive leadership: Admin, Director, CEO)
       const pill = $tm('tmApprovalCountPill');
-      if (pill && tm.stats && tm.stats.pendingApprovalsCount > 0) {
+      if (pill && exec && tm.stats && tm.stats.pendingApprovalsCount > 0) {
         pill.textContent = tm.stats.pendingApprovalsCount;
         pill.style.display = 'inline-block';
       } else if (pill) {
@@ -396,14 +435,18 @@
 
   window.tmSwitchTab = async function(tabName) {
     const admin = isTaskAdmin();
-    if (!admin && (tabName === 'team-capacity' || tabName === 'events' || tabName === 'approvals')) {
+    const canApprove = isExecutiveLeader();
+    if (!admin && (tabName === 'team-capacity' || tabName === 'events')) {
+      tabName = 'my-work';
+    }
+    if (tabName === 'approvals' && !canApprove) {
       tabName = 'my-work';
     }
     tm.currentTab = tabName;
     document.querySelectorAll('.tm-tab-btn').forEach(b => b.classList.remove('active'));
     const btn = $tm(`tabBtn-${tabName}`);
     if (btn) btn.classList.add('active');
-    if (tabName === 'approvals' && admin) {
+    if (tabName === 'approvals' && canApprove) {
       await tmFetchTasks();
     }
     tmRenderTab();
@@ -433,7 +476,8 @@
   // =========================================================================
   function renderMyWorkTab() {
     const admin = isTaskAdmin();
-    const isViewingStaff = admin && tm.adminSelectedEmployeeId && tm.adminSelectedEmployeeId !== 'self';
+    const exec = isExecutiveLeader();
+    const isViewingStaff = exec && tm.adminSelectedEmployeeId && tm.adminSelectedEmployeeId !== 'self';
     const viewedMember = isViewingStaff ? tm.teamMembers.find(m => String(m.employee_id) === String(tm.adminSelectedEmployeeId)) : null;
 
     const cap = (isViewingStaff ? tm.adminSelectedEmployeeCapacity : tm.capacity) || {
@@ -469,16 +513,19 @@
     const inProgressTasks = targetTasks.filter(t => t.status === 'IN_PROGRESS');
     const openTasks = targetTasks.filter(t => t.status === 'OPEN' || t.status === 'READY');
 
+    const loggedInStaffName = (typeof session !== 'undefined' && session && session.name) ? session.name : 'Current User';
+    const loggedInStaffDept = (typeof session !== 'undefined' && session && (session.title || session.team)) ? (session.title || session.team) : 'Staff';
+
     return `
     <div style="display:flex;flex-direction:column;gap:20px;">
-      <!-- Admin Staff Daily Plan & Workload Switcher -->
-      ${admin ? `
+      <!-- Staff Daily Plan & Workload Switcher -->
       <div style="background:#FFF;border:1.5px solid var(--border);border-radius:14px;padding:12px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
           <span style="font-size:13.5px;font-weight:700;color:var(--navy);">👤 Select Staff Daily Workload &amp; Capacity:</span>
+          ${exec ? `
           <select onchange="tmSelectAdminResourceView(this.value)" style="padding:7px 14px;border:1.5px solid var(--cyan);border-radius:8px;font-weight:700;background:#F0F9FF;color:var(--navy);font-size:13.5px;">
             <option value="self" ${(!tm.adminSelectedEmployeeId || tm.adminSelectedEmployeeId === 'self') ? 'selected' : ''}>
-              ⭐ My Own Work Plan (Admin)
+              ⭐ My Own Work Plan (${escHtml(loggedInStaffDept)})
             </option>
             ${tm.teamMembers.filter(m => !isExecutive(m)).map(m => `
               <option value="${m.employee_id}" ${String(tm.adminSelectedEmployeeId) === String(m.employee_id) ? 'selected' : ''}>
@@ -486,8 +533,18 @@
               </option>
             `).join('')}
           </select>
+          ` : `
+          <select disabled style="padding:7px 14px;border:1.5px solid #CBD5E1;border-radius:8px;font-weight:700;background:#F8FAFC;color:#334155;font-size:13.5px;cursor:not-allowed;" title="Locked to logged-in employee">
+            <option selected>
+              👤 ${escHtml(loggedInStaffName)} (${escHtml(loggedInStaffDept)})
+            </option>
+          </select>
+          <span style="font-size:11.5px;background:#F1F5F9;color:#64748B;border:1px solid #CBD5E1;font-weight:700;padding:4px 9px;border-radius:6px;display:inline-flex;align-items:center;gap:5px;">
+            🔒 Logged-in Staff (Non-editable)
+          </span>
+          `}
         </div>
-        ${viewedMember ? `
+        ${exec && viewedMember ? `
         <div style="display:flex;align-items:center;gap:12px;">
           <div style="text-align:right;">
             <span style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;">Free Hours Available: </span>
@@ -502,7 +559,6 @@
         </div>
         ` : ''}
       </div>
-      ` : ''}
 
       <!-- 8-Hour Capacity Card -->
       <div class="capacity-card">
@@ -1155,11 +1211,19 @@
   };
 
   window.tmViewFullEmployeePlan = async function(empId) {
+    if (!isExecutiveLeader()) return;
     await tmSelectAdminResourceView(String(empId));
     tmSwitchTab('my-work');
   };
 
   window.tmSelectAdminResourceView = async function(val) {
+    if (!isExecutiveLeader()) {
+      tm.adminSelectedEmployeeId = 'self';
+      tm.adminSelectedEmployeeCapacity = null;
+      tm.adminSelectedEmployeeCrm = null;
+      tmRenderTab();
+      return;
+    }
     tm.adminSelectedEmployeeId = val;
     if (val && val !== 'self') {
       const empId = parseInt(val, 10);
@@ -2063,13 +2127,13 @@
   // Tab 5: Approvals Inbox
   // =========================================================================
   function renderApprovalsTab() {
-    if (!isTaskAdmin()) {
+    if (!isExecutiveLeader()) {
       return `
       <div class="card" style="padding:48px 24px;text-align:center;background:#FFF;border-radius:16px;border:1px solid var(--border);">
         <div style="font-size:40px;margin-bottom:12px;">🔒</div>
         <h3 style="font-size:17px;font-weight:700;color:var(--navy);">Access Restricted</h3>
         <p style="font-size:13.5px;color:var(--muted);max-width:480px;margin:6px auto 0 auto;">
-          The global Approvals Queue is managed by Administrators and Team Managers.
+          The Approvals Queue is accessible only to Administrators, Directors, and the CEO.
         </p>
       </div>`;
     }
@@ -2129,6 +2193,10 @@
   }
 
   window.tmSubmitApproval = async function(taskId, decision) {
+    if (!isExecutiveLeader()) {
+      alert('Only Admin, Director, or CEO can approve or reject tasks.');
+      return;
+    }
     const notes = prompt(`Enter ${decision.toLowerCase()} notes (optional):`);
     if (notes === null) return; // User cancelled prompt
     try {
