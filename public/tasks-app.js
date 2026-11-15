@@ -60,11 +60,11 @@
     const u = target || (typeof session !== 'undefined' ? session : null) || (typeof window !== 'undefined' ? window.session : null);
     if (!u) return false;
 
-    // Check specific leadership usernames/names
+    // Check admin / leadership
     const name = String(u.name || '').toUpperCase();
     const uName = String(u.username || '').toUpperCase();
-    if (name.includes('SUPER ADMIN') || name.includes('SURESH RADHAKRISHNAN') || name.includes('MANOJ KOMBISSAN') ||
-        uName === 'ADMIN' || uName === 'SUPERADMIN' || uName === 'SURESH' || uName === 'MANOJ') {
+    if (name.includes('ADMIN') || name.includes('SUPER ADMIN') ||
+        uName === 'ADMIN' || uName === 'SUPERADMIN' || uName === 'SUPER_ADMIN') {
       return true;
     }
 
@@ -259,8 +259,8 @@
     const name = String(m.name || '').toUpperCase();
     const uName = String(m.username || '').toUpperCase();
     return desig.includes('ADMIN') || desig.includes('CEO') || desig.includes('DIRECTOR') ||
-           name.includes('ADMIN') || name.includes('SUPER ADMIN') || name.includes('SURESH RADHAKRISHNAN') || name.includes('MANOJ KOMBISSAN') ||
-           uName === 'ADMIN' || uName === 'SUPERADMIN' || uName === 'SURESH' || uName === 'MANOJ';
+           name.includes('ADMIN') || name.includes('SUPER ADMIN') ||
+           uName === 'ADMIN' || uName === 'SUPERADMIN' || uName === 'SUPER_ADMIN';
   }
 
   function isTaskTimerRunning(taskId) {

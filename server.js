@@ -664,9 +664,7 @@ function canNominateOthers(user) {
 }
 
 function canViewAllApplications(user) {
-  // Only CEO, Director, and Managing Director can view all employee applications.
-  // Super Admin, Service Admin, and regular employees only view their own nominations.
-  return isExecutiveLeadership(user);
+  return isAdmin(user) || isExecutiveLeadership(user);
 }
 
 function safeJsonParse(str, fallback = null) {

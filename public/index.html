@@ -2289,7 +2289,7 @@ function isExecutiveLeadership(u) {
 }
 
 function can1on1Review(u) {
-  return isExecutiveLeadership(u);
+  return isAdmin() || isSuperAdmin(u) || isExecutiveLeadership(u);
 }
 
 function canConfigure1on1Window(u) {
