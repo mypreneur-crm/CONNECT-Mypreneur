@@ -1016,12 +1016,6 @@
             <button onclick="window.MessengerApp.startDirectChatWithEmployee(${emp.id})" class="msg-btn msg-btn-primary" title="Chat" style="padding:6px 10px;font-size:12px;">
               💬
             </button>
-            <button onclick="window.MessengerApp.startCallWithEmployee(${emp.id}, 'AUDIO')" class="msg-btn msg-btn-ghost" title="Audio Call" style="padding:6px 8px;font-size:13px;">
-              📞
-            </button>
-            <button onclick="window.MessengerApp.startCallWithEmployee(${emp.id}, 'VIDEO')" class="msg-btn msg-btn-ghost" title="Video Call" style="padding:6px 8px;font-size:13px;">
-              📹
-            </button>
           </div>
         </div>
       `;
@@ -1180,12 +1174,6 @@
 
             <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;" onclick="event.stopPropagation()">
               ${!isGroup && targetEmp ? `
-                <button onclick="window.MessengerApp.startCallWithEmployee(${targetEmp.employee_id}, 'AUDIO')" class="msg-btn" title="Voice Call" style="background:transparent;color:#FFF;padding:4px 6px;font-size:14px;">
-                  📞
-                </button>
-                <button onclick="window.MessengerApp.startCallWithEmployee(${targetEmp.employee_id}, 'VIDEO')" class="msg-btn" title="Video Call" style="background:transparent;color:#FFF;padding:4px 6px;font-size:14px;">
-                  📹
-                </button>
               ` : ''}
               ${isGroup ? `
                 <button onclick="window.MessengerApp.openEditGroupModal('${chat.convId}')" class="msg-btn" title="Edit Group (Settings & Members)" style="background:transparent;color:#FFF;padding:4px 6px;font-size:13px;line-height:1;">

@@ -1739,7 +1739,7 @@ td .t-url{
 <div id="toast" class="toast" role="status"></div>
 
 <script src="/tasks-app.js?v=20261114_05"></script>
-<script src="/messenger-app.js?v=20261114_11"></script>
+<script src="/messenger-app.js?v=20261115_01"></script>
 
 <script>
 /* =====================================================================
@@ -6294,12 +6294,6 @@ function renderContactsContent() {
                     <button class="contact-action-btn primary" onclick="window.MessengerApp.startDirectChatWithEmployee(${c.id})" title="Messenger Chat">
                       💬 Chat
                     </button>
-                    <button class="contact-action-btn" onclick="window.MessengerApp.startCallWithEmployee(${c.id}, 'AUDIO')" title="Voice Call" style="padding:6px 8px;">
-                      📞
-                    </button>
-                    <button class="contact-action-btn" onclick="window.MessengerApp.startCallWithEmployee(${c.id}, 'VIDEO')" title="Video Call" style="padding:6px 8px;">
-                      📹
-                    </button>
                     <button class="contact-action-btn" onclick="openContactChatModal(${c.id})" title="Share Link or Note" style="padding:6px 8px;">
                       🔗
                     </button>
@@ -6381,12 +6375,6 @@ function renderContactsContent() {
           <div style="display:flex;align-items:center;gap:6px;margin-top:auto;flex-wrap:wrap;">
             <button class="contact-action-btn primary" onclick="window.MessengerApp.startDirectChatWithEmployee(${c.id})" style="flex:1;min-width:85px;" title="Messenger Chat">
               💬 Chat
-            </button>
-            <button class="contact-action-btn" onclick="window.MessengerApp.startCallWithEmployee(${c.id}, 'AUDIO')" title="Voice Call" style="padding:6px 8px;">
-              📞
-            </button>
-            <button class="contact-action-btn" onclick="window.MessengerApp.startCallWithEmployee(${c.id}, 'VIDEO')" title="Video Call" style="padding:6px 8px;">
-              📹
             </button>
             <button class="contact-action-btn" onclick="openContactChatModal(${c.id})" title="Share Link or Note" style="padding:6px 8px;">
               🔗
