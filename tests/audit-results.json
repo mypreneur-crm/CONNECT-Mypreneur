@@ -1,0 +1,359 @@
+[
+  {
+    "control": "Previous Year",
+    "role": "SUPER_ADMIN",
+    "testPerformed": "Verify #m1on1PrevYearBtn decrement and dashboard year reload",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Next Year",
+    "role": "SUPER_ADMIN",
+    "testPerformed": "Verify #m1on1NextYearBtn increment and dashboard year reload",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Schedule 1:1 Meeting Report",
+    "role": "SUPER_ADMIN",
+    "testPerformed": "Verify [data-m1-schedule-month] opens window overlay and loads schedule config",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Save Schedule",
+    "role": "SUPER_ADMIN",
+    "testPerformed": "Verify modal Save Schedule creates window schedule in DB",
+    "result": "PASS",
+    "fixApplied": "Updated default HTML text and modal reset logic for unconfigured months"
+  },
+  {
+    "control": "Update Schedule",
+    "role": "SUPER_ADMIN",
+    "testPerformed": "Verify modal Update Schedule updates window schedule in DB",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Close Modal",
+    "role": "SUPER_ADMIN",
+    "testPerformed": "Verify #m1WinClose hides #m1on1WindowOverlay",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Cancel",
+    "role": "SUPER_ADMIN",
+    "testPerformed": "Verify #m1WinCancel hides #m1on1WindowOverlay",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Close 1:1 Meeting Report",
+    "role": "SUPER_ADMIN",
+    "testPerformed": "Verify manual close locks reporting month for employees",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Open 1:1 Meeting Report",
+    "role": "SUPER_ADMIN",
+    "testPerformed": "Verify manual open activates reporting month for eligible employees",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Confirmation buttons",
+    "role": "SUPER_ADMIN",
+    "testPerformed": "Verify confirmation prompts before manual window state mutations",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "All Employee Applications navigation",
+    "role": "SUPER_ADMIN",
+    "testPerformed": "Verify [data-m1on1-mgr] transitions to manager review dashboard",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Start Report",
+    "role": "EMPLOYEE",
+    "testPerformed": "Verify [data-m1on1-start] initializes new report draft",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Continue Report",
+    "role": "EMPLOYEE",
+    "testPerformed": "Verify [data-m1on1-open] with editable=true opens wizard in edit mode",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Previous Step",
+    "role": "EMPLOYEE",
+    "testPerformed": "Verify #m1on1PrevBtn decrements current wizard step and saves form data",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Next Step",
+    "role": "EMPLOYEE",
+    "testPerformed": "Verify #m1on1NextBtn increments current wizard step and saves form data",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Add Deliverable",
+    "role": "EMPLOYEE",
+    "testPerformed": "Verify #cdAddBtn appends deliverable row to #cdBody",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Remove Deliverable",
+    "role": "EMPLOYEE",
+    "testPerformed": "Verify deliverable delete button removes <tr> and updates dirty state",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Upload Image/PDF",
+    "role": "EMPLOYEE",
+    "testPerformed": "Verify file upload handler saves file and generates proof attachment link",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Add Pending Task",
+    "role": "EMPLOYEE",
+    "testPerformed": "Verify #pendingAddBtn appends pending task row",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Remove Pending Task",
+    "role": "EMPLOYEE",
+    "testPerformed": "Verify pending task delete button removes row",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "No Pending Tasks checkbox",
+    "role": "EMPLOYEE",
+    "testPerformed": "Verify #noPendingChk toggles section visibility and sets confirmed flag",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Add Challenge",
+    "role": "EMPLOYEE",
+    "testPerformed": "Verify #challengeAddBtn appends challenge row",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Remove Challenge",
+    "role": "EMPLOYEE",
+    "testPerformed": "Verify challenge delete button removes row",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "No Major Challenges checkbox",
+    "role": "EMPLOYEE",
+    "testPerformed": "Verify #noChallengeChk toggles section visibility and sets confirmed flag",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Add Responsibility",
+    "role": "EMPLOYEE",
+    "testPerformed": "Verify #respAddBtn appends responsibility row",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Remove Responsibility",
+    "role": "EMPLOYEE",
+    "testPerformed": "Verify responsibility delete button removes row",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Capacity radio buttons",
+    "role": "EMPLOYEE",
+    "testPerformed": "Verify radio selection toggles conditional detail textarea for Yes/Partially",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Add Suggestion",
+    "role": "EMPLOYEE",
+    "testPerformed": "Verify #sugAddBtn appends improvement suggestion row",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Remove Suggestion",
+    "role": "EMPLOYEE",
+    "testPerformed": "Verify suggestion delete button removes row",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Priority input fields",
+    "role": "EMPLOYEE",
+    "testPerformed": "Verify exactly three priority commitment input fields exist and save values",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Save Draft",
+    "role": "EMPLOYEE",
+    "testPerformed": "Verify #m1on1DraftBtn saves full multi-step state to database",
+    "result": "PASS",
+    "fixApplied": "Added disabled/loading state during save"
+  },
+  {
+    "control": "Back to Edit",
+    "role": "EMPLOYEE",
+    "testPerformed": "Verify #m1on1BackEditBtn returns applicant to Step 1",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Confirmation checkbox",
+    "role": "EMPLOYEE",
+    "testPerformed": "Verify #m1on1AckChk is mandatory before report submission",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Submit Report",
+    "role": "EMPLOYEE",
+    "testPerformed": "Verify #m1on1SubmitBtn transitions report to Submitted and logs audit trail",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "View Report",
+    "role": "EMPLOYEE",
+    "testPerformed": "Verify [data-m1on1-open] with editable=false opens read-only template",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "View Previous Report",
+    "role": "EMPLOYEE",
+    "testPerformed": "Verify Section B history table displays past reports and View buttons",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Search",
+    "role": "REVIEWER",
+    "testPerformed": "Verify #m1MgrSearch filters team reports by employee name",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Filters",
+    "role": "REVIEWER",
+    "testPerformed": "Verify Year, Month, and Status dropdowns filter team reports table",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Reset",
+    "role": "REVIEWER",
+    "testPerformed": "Verify #m1MgrResetBtn restores default filter values and reloads data",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "View Application",
+    "role": "REVIEWER",
+    "testPerformed": "Verify [data-m1on1-review] opens complete employee application for review",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Save Manager Notes",
+    "role": "REVIEWER",
+    "testPerformed": "Verify #m1SaveFeedbackBtn persists Section 6 alignment notes",
+    "result": "PASS",
+    "fixApplied": "Added disabled/loading state and audit logging"
+  },
+  {
+    "control": "Feedback",
+    "role": "REVIEWER",
+    "testPerformed": "Verify [data-m1on1-feedback] opens feedback dialog displaying decision notes",
+    "result": "PASS",
+    "fixApplied": "Moved feedback modal close bindings to DOMContentLoaded"
+  },
+  {
+    "control": "Reject",
+    "role": "REVIEWER",
+    "testPerformed": "Verify rejection requires non-empty reason and updates report status to Rejected",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Approve",
+    "role": "REVIEWER",
+    "testPerformed": "Verify approval confirms decision, sets Approved status and reviewer timestamp",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Cancel",
+    "role": "REVIEWER",
+    "testPerformed": "Verify cancel and close buttons in approve/reject modals dismiss dialogs",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Back",
+    "role": "REVIEWER",
+    "testPerformed": "Verify back buttons in manager list and read-only report view return smoothly",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Privacy: Report Isolation",
+    "role": "EMPLOYEE",
+    "testPerformed": "Verify employee cannot read another employee report (HTTP 403 / 404)",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Privacy: Team Statistics",
+    "role": "EMPLOYEE",
+    "testPerformed": "Verify employee cannot access team applications list or summary metrics (HTTP 403)",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Security: Self-Approval Block",
+    "role": "SERVICE_ADMIN",
+    "testPerformed": "Verify Service Admin cannot approve own report (HTTP 403 SELF_APPROVAL_FORBIDDEN)",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Deadline: Closed Window Lock",
+    "role": "EMPLOYEE",
+    "testPerformed": "Verify window closure rejects direct applicant modification attempts (HTTP 403 WINDOW_CLOSED)",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  },
+  {
+    "control": "Deadline: Reviewer Continuity",
+    "role": "SUPER_ADMIN",
+    "testPerformed": "Verify reviewers can continue reviewing and updating notes after window deadline",
+    "result": "PASS",
+    "fixApplied": "None (functioning)"
+  }
+]

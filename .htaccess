@@ -1,0 +1,40 @@
+# ==============================================================================
+# MYPRENEUR CONNECT — HOSTINGER / APACHE / LITESPEED SECURITY CONFIGURATION
+# ==============================================================================
+
+# 1. Disable directory browsing
+Options -Indexes
+
+# 2. Block access to hidden files and directories (.git, .env, .agents, etc.)
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+
+# 3. Block access to sensitive source code, database dumps, logs, and config files
+<FilesMatch "(^server\.js|\.env|\.env\.example|\.sql|\.log|\.bak|\.config|package\.json|package-lock\.json|DEPLOYMENT\.txt|HOSTINGER-DEPLOYMENT\.md)$">
+    Require all denied
+</FilesMatch>
+
+# 4. Protect backend subdirectories from direct web access
+RedirectMatch 403 ^/(lib|tests|scripts|database|\.agents|\.git)/
+
+# 5. Security Headers (Defense-in-depth at web server level)
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "DENY"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+    Header set Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+    Header set Cross-Origin-Opener-Policy "same-origin"
+    Header set Cross-Origin-Resource-Policy "same-origin"
+</IfModule>
+
+# 6. Prevent PHP and script execution in the uploads folder
+<IfModule mod_php.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php7.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php8.c>
+    php_flag engine off
+</IfModule>

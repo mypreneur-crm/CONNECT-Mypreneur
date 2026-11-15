@@ -1,5 +1,9 @@
 .env
 node_modules/
 data/uploads/
+backups/
+*.enc
 *.log
 .DS_Store
+.agents/
+

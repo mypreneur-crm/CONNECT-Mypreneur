@@ -181,7 +181,8 @@ async function runTests() {
   // 8b. Test Event Project Creation & Admin Deletion Flow
   console.log('\n[Test 8b] Testing Event Project Creation & Admin Deletion Flow...');
   const testEvent = await service.createEvent({
-    event_name: 'Test Workshop Project Deletion',
+    event_name: `Test Workshop Project Deletion ${Date.now()}`,
+    event_code: `EVT-${Math.floor(100000 + Math.random() * 900000)}`,
     event_type_id: 1,
     start_date: '2026-12-01',
     end_date: '2026-12-02',

@@ -11,7 +11,14 @@
     "test-login": "node --env-file=.env scripts/test-login.js",
     "add-user": "node --env-file=.env scripts/add-user.js",
     "sync-roles": "node --env-file=.env scripts/sync-roles.js",
-    "test": "node tests/unit-test.js"
+    "test": "node tests/unit-test.js",
+    "test:api": "node --env-file=.env tests/monthly-1on1-api-test.js",
+    "test:frontend": "node tests/frontend-dashboard-test.js",
+    "test:form": "node --env-file=.env tests/monthly-1on1-form-e2e-test.js",
+    "test:manager": "node --env-file=.env tests/monthly-1on1-manager-review-test.js",
+    "test:print": "node --env-file=.env tests/monthly-1on1-print-view-test.js",
+    "test:security": "node --env-file=.env tests/security-verification-suite.js",
+    "db:backup": "node --env-file=.env scripts/backup-database.js"
   },
   "dependencies": {
     "bcryptjs": "3.0.2",

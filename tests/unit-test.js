@@ -33,12 +33,21 @@ assert.deepEqual(resolvePortalAccess(['EMPLOYEE'], 'Digital', config), { role: '
 assert.equal(mapSourceTeam('Sales', config), 'Sales Team');
 assert.deepEqual(resolvePortalAccess(['EMPLOYEE'], 'Accounts', config), { role: 'member', team: 'Accounts Team' });
 
-assert.equal(SCHEMA_STATEMENTS.length, 6);
+assert.equal(SCHEMA_STATEMENTS.length, 8);
 const schemaText = SCHEMA_STATEMENTS.join('\n').toLowerCase();
 for (const forbidden of ['role_mappings', 'audit_logs', 'login_attempts', 'sessions', 'users']) {
   assert.equal(schemaText.includes(forbidden), false, `Schema must not create ${forbidden}`);
 }
-for (const required of ['create table if not exists links', 'create table if not exists events', 'create table if not exists announcements', 'create table if not exists annonymous_message', 'create table if not exists eoq_windows', 'create table if not exists eoq_nominations']) {
+for (const required of [
+  'create table if not exists links',
+  'create table if not exists events',
+  'create table if not exists announcements',
+  'create table if not exists annonymous_message',
+  'create table if not exists eoq_windows',
+  'create table if not exists eoq_nominations',
+  'create table if not exists monthly_1on1_reports',
+  'create table if not exists monthly_1on1_items'
+]) {
   assert.equal(schemaText.includes(required), true, `Missing ${required}`);
 }
 
@@ -70,6 +79,8 @@ for (const required of ['create table if not exists links', 'create table if not
   assert.equal(saved.storageKey.startsWith('eoq/'), true);
   await store.remove(saved.storageKey);
   await fs.promises.rm(path.join(__dirname, 'scratch_test_uploads'), { recursive: true, force: true });
+
+  require('./monthly-1on1-test');
 
   console.log('Unit tests passed: existing database authentication, direct role/team access, three Connect tables, secure sessions, and no hardcoded users or passwords.');
 })().catch(error => {

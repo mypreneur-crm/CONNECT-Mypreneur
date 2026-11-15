@@ -166,3 +166,89 @@ CREATE TABLE IF NOT EXISTS connect_login_attempts (
   PRIMARY KEY (attempt_key),
   KEY idx_connect_login_attempts_updated (updated_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS connect_monthly_1on1_reports (
+  id CHAR(36) NOT NULL,
+  employee_id BIGINT UNSIGNED NOT NULL,
+  employee_name VARCHAR(180) NOT NULL DEFAULT '',
+  reviewer_id BIGINT UNSIGNED NULL,
+  reviewer_name VARCHAR(180) NOT NULL DEFAULT '',
+  department VARCHAR(120) NOT NULL DEFAULT '',
+  employee_role VARCHAR(120) NOT NULL DEFAULT '',
+  reporting_month DATE NOT NULL,
+  meeting_date DATE NULL,
+  record_type ENUM('report','window') NOT NULL DEFAULT 'report',
+  work_location VARCHAR(180) NOT NULL DEFAULT '',
+  current_projects TEXT NULL,
+  overall_status ENUM(
+    'On Track',
+    'Needs Attention',
+    'Delayed',
+    'At Risk'
+  ) NULL,
+  capacity_for_additional_responsibilities
+    ENUM('Yes','No','Partially') NULL,
+  additional_responsibility_details TEXT NULL,
+  status ENUM(
+    'Draft',
+    'Submitted',
+    'Under Review',
+    'Revision Requested',
+    'Completed',
+    'Approved',
+    'Rejected',
+    'Open',
+    'Closed',
+    'Upcoming'
+  ) NOT NULL DEFAULT 'Draft',
+  submitted_at VARCHAR(35) NOT NULL DEFAULT '',
+  revision_reason TEXT NULL,
+  manager_notes_json LONGTEXT NULL,
+  employee_acknowledged_at VARCHAR(35) NOT NULL DEFAULT '',
+  reviewer_acknowledged_at VARCHAR(35) NOT NULL DEFAULT '',
+  completed_at VARCHAR(35) NOT NULL DEFAULT '',
+  window_start VARCHAR(35) NULL,
+  window_end VARCHAR(35) NULL,
+  director_name VARCHAR(180) NOT NULL DEFAULT 'Managing Director',
+  approved_at VARCHAR(35) NOT NULL DEFAULT '',
+  approved_by_id BIGINT UNSIGNED NULL,
+  approved_by_name VARCHAR(180) NULL,
+  rejected_at VARCHAR(35) NOT NULL DEFAULT '',
+  rejected_by_id BIGINT UNSIGNED NULL,
+  rejected_by_name VARCHAR(180) NULL,
+  rejection_reason TEXT NULL,
+  decision_notes TEXT NULL,
+  created_at VARCHAR(35) NOT NULL,
+  updated_at VARCHAR(35) NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY idx_1on1_employee_month
+    (employee_id, reporting_month),
+  KEY idx_1on1_reviewer
+    (reviewer_id, reporting_month),
+  KEY idx_1on1_status (status),
+  KEY idx_1on1_record_type (record_type)
+) ENGINE=InnoDB
+DEFAULT CHARSET=utf8mb4
+COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS connect_monthly_1on1_items (
+  id CHAR(36) NOT NULL,
+  report_id CHAR(36) NOT NULL,
+  section_key VARCHAR(100) NOT NULL,
+  item_order INT UNSIGNED NOT NULL DEFAULT 0,
+  item_json LONGTEXT NOT NULL,
+  created_at VARCHAR(35) NOT NULL,
+  updated_at VARCHAR(35) NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY idx_1on1_item_order
+    (report_id, section_key, item_order),
+  KEY idx_1on1_report_section
+    (report_id, section_key),
+  CONSTRAINT fk_connect_1on1_report
+    FOREIGN KEY (report_id)
+    REFERENCES connect_monthly_1on1_reports(id)
+    ON DELETE CASCADE
+) ENGINE=InnoDB
+DEFAULT CHARSET=utf8mb4
+COLLATE=utf8mb4_unicode_ci;
+

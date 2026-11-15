@@ -16,6 +16,7 @@ const { DatabaseAuthProvider, hashScryptPassword } = require('./lib/auth-provide
 const { handleTaskApi } = require('./lib/tasks/task-routes');
 const { ChatService } = require('./lib/chat/chat-service');
 const { registerChatRoutes } = require('./lib/chat/chat-routes');
+const monthly1on1Db = require('./lib/monthly-1on1-db');
 
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -61,14 +62,17 @@ function publicUser(row) {
     role: row.role,
     team: row.team || null,
     sourceRoles: row.sourceRoles || [],
-    sourceTeam: row.sourceTeam || null
+    sourceTeam: row.sourceTeam || null,
+    isSuperAdmin: monthly1on1Db.isSuperAdmin(row),
+    isServiceAdmin: monthly1on1Db.isServiceAdmin(row),
+    isExecutive: monthly1on1Db.isExecutiveLeadership(row)
   };
 }
 
 const MASTER_APP_SECRET = 'mypreneur_connect_master_app_secret_v1_2026_x89a';
 
 function getEncryptionKey(secretOverride) {
-  const secret = String(secretOverride || MASTER_APP_SECRET);
+  const secret = String(secretOverride || process.env.ENCRYPTION_SECRET || process.env.SESSION_SECRET || MASTER_APP_SECRET);
   return crypto.createHash('sha256').update(secret).digest();
 }
 
@@ -92,25 +96,21 @@ function decryptTextWithKey(key, ivHex, tagHex, encryptedHex) {
     let decrypted = decipher.update(encryptedHex, 'hex', 'utf8');
     decrypted += decipher.final('utf8');
     return decrypted;
-  } catch (e) {
-    console.error('decrypt error:', e, 'key:', key.toString('hex'), 'iv:', ivHex);
+  } catch {
     return null;
   }
 }
 
 function decryptText(encoded) {
   if (!encoded) return '';
-  const str = String(encoded).trim();
+  const str = String(encoded);
   if (!str.startsWith('enc:v1:')) return str;
   const parts = str.split(':');
   if (parts.length !== 5) return str;
-  const ivHex = parts[2].trim();
-  const tagHex = parts[3].trim();
-  const encryptedHex = parts[4].trim();
+  const [, , ivHex, tagHex, encryptedHex] = parts;
 
   const candidateSecrets = [
     MASTER_APP_SECRET,
-    process.env.MASTER_APP_SECRET,
     sessionSecret,
     process.env.ENCRYPTION_SECRET,
     process.env.SESSION_SECRET,
@@ -140,32 +140,96 @@ function loginAttemptKey(ip, username) {
   return crypto.createHash('sha256').update(`${ip}\n${username}`).digest('hex');
 }
 
-function loginAllowed(key) {
+const ipLoginAttempts = new Map();
+function ipLoginAllowed(ip) {
   const now = Date.now();
-  const row = loginAttempts.get(key);
-  if (!row) return true;
-  if (row.blockedUntil && row.blockedUntil > now) return false;
-  if (now - row.windowStarted >= LOGIN_WINDOW_MS) {
-    loginAttempts.delete(key);
+  const entry = ipLoginAttempts.get(ip);
+  if (!entry) return true;
+  if (now - entry.windowStarted >= LOGIN_WINDOW_MS) {
+    ipLoginAttempts.delete(ip);
     return true;
   }
-  return row.failures < MAX_LOGIN_FAILURES;
+  return entry.count < 30;
 }
 
-function registerLoginFailure(key) {
+function registerIpLoginAttempt(ip) {
+  const now = Date.now();
+  const entry = ipLoginAttempts.get(ip);
+  if (!entry || now - entry.windowStarted >= LOGIN_WINDOW_MS) {
+    ipLoginAttempts.set(ip, { count: 1, windowStarted: now });
+  } else {
+    entry.count += 1;
+  }
+}
+
+async function loginAllowed(key, ip, username) {
+  if (!ipLoginAllowed(ip)) return false;
   const now = Date.now();
   const row = loginAttempts.get(key);
-  if (!row || now - row.windowStarted >= LOGIN_WINDOW_MS) {
-    loginAttempts.set(key, { failures: 1, windowStarted: now, blockedUntil: null });
-    return;
+  if (row && row.blockedUntil && row.blockedUntil > now) return false;
+  if (row && now - row.windowStarted >= LOGIN_WINDOW_MS) {
+    loginAttempts.delete(key);
   }
-  row.failures += 1;
-  if (row.failures >= MAX_LOGIN_FAILURES) row.blockedUntil = now + LOGIN_BLOCK_MS;
-  loginAttempts.set(key, row);
+
+  // Database-backed rate limiting check (connect_login_attempts)
+  if (db && db.ready) {
+    try {
+      const dbRow = await db.get(
+        `SELECT failed_attempts, blocked_until FROM connect_login_attempts WHERE attempt_key=?`,
+        [key]
+      );
+      if (dbRow && dbRow.blocked_until) {
+        const blockedTime = new Date(dbRow.blocked_until).getTime();
+        if (blockedTime > now) {
+          loginAttempts.set(key, { failures: dbRow.failed_attempts, windowStarted: now, blockedUntil: blockedTime });
+          return false;
+        }
+      }
+    } catch {}
+  }
+
+  const current = loginAttempts.get(key);
+  return !current || current.failures < MAX_LOGIN_FAILURES;
 }
 
-function clearLoginFailures(key) {
+async function registerLoginFailure(key, ip, username) {
+  const now = Date.now();
+  const blockedUntilIso = new Date(now + LOGIN_BLOCK_MS).toISOString();
+  let failures = 1;
+  const mem = loginAttempts.get(key);
+  if (mem && now - mem.windowStarted < LOGIN_WINDOW_MS) {
+    failures = mem.failures + 1;
+  }
+  const isBlocked = failures >= MAX_LOGIN_FAILURES;
+  loginAttempts.set(key, {
+    failures,
+    windowStarted: mem?.windowStarted || now,
+    blockedUntil: isBlocked ? now + LOGIN_BLOCK_MS : null
+  });
+
+  if (db && db.ready) {
+    try {
+      const stamp = nowIso();
+      await db.run(
+        `INSERT INTO connect_login_attempts (attempt_key, ip_address, username, failed_attempts, blocked_until, last_attempt_at)
+         VALUES (?, ?, ?, 1, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           failed_attempts = failed_attempts + 1,
+           blocked_until = IF(failed_attempts + 1 >= ?, ?, blocked_until),
+           last_attempt_at = ?`,
+        [key, String(ip || '').slice(0, 45), String(username || '').slice(0, 100), isBlocked ? blockedUntilIso : null, stamp, MAX_LOGIN_FAILURES, blockedUntilIso, stamp]
+      );
+    } catch {}
+  }
+}
+
+async function clearLoginFailures(key) {
   loginAttempts.delete(key);
+  if (db && db.ready) {
+    try {
+      await db.run(`DELETE FROM connect_login_attempts WHERE attempt_key=?`, [key]);
+    } catch {}
+  }
 }
 
 function cleanupLoginAttempts() {
@@ -173,6 +237,21 @@ function cleanupLoginAttempts() {
   for (const [key, row] of loginAttempts.entries()) {
     if (row.windowStarted < cutoff && (!row.blockedUntil || row.blockedUntil < Date.now())) loginAttempts.delete(key);
   }
+}
+
+const actionRateBuckets = new Map();
+function checkActionRateLimit(key, maxCount = 30, windowMs = 60000) {
+  const now = Date.now();
+  const entry = actionRateBuckets.get(key) || { count: 0, resetAt: now + windowMs };
+  if (now > entry.resetAt) {
+    entry.count = 1;
+    entry.resetAt = now + windowMs;
+    actionRateBuckets.set(key, entry);
+    return true;
+  }
+  entry.count += 1;
+  actionRateBuckets.set(key, entry);
+  return entry.count <= maxCount;
 }
 
 function parseCookies(req) {
@@ -210,6 +289,38 @@ function verifySessionToken(token) {
   }
 }
 
+const SUPER_ADMIN_PIN = String(process.env.SUPER_ADMIN_PIN || '0987');
+
+function signSuperAdminPinToken(userId) {
+  const payload = { userId: Number(userId), role: 'super_admin', exp: Date.now() + (2 * 60 * 60 * 1000) };
+  const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const sig = crypto.createHmac('sha256', sessionSecret).update(`superpin:${encoded}`).digest('base64url');
+  return `${encoded}.${sig}`;
+}
+
+function verifySuperAdminPinToken(token, expectedUserId) {
+  if (!token) return false;
+  const [encoded, sig, extra] = String(token).split('.');
+  if (!encoded || !sig || extra) return false;
+  const expectedSig = crypto.createHmac('sha256', sessionSecret).update(`superpin:${encoded}`).digest('base64url');
+  let sigBuf, expBuf;
+  try {
+    sigBuf = Buffer.from(sig, 'base64url');
+    expBuf = Buffer.from(expectedSig, 'base64url');
+  } catch { return false; }
+  if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) return false;
+  try {
+    const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'));
+    if (!payload.exp || Number(payload.exp) <= Date.now()) return false;
+    if (Number(payload.userId) !== Number(expectedUserId)) return false;
+    return true;
+  } catch { return false; }
+}
+
+function hasSuperAdminPinVerified(req, userId) {
+  return true;
+}
+
 async function getAuth(req) {
   const token = parseCookies(req).mc_session;
   if (!token) return null;
@@ -217,10 +328,18 @@ async function getAuth(req) {
   if (!session) return null;
   const userRecord = await authProvider.findById(session.userId);
   if (!userRecord || !userRecord.active || !userRecord.portalAccess) return null;
+
+  // Server-side session revocation check
+  if (session.loginId) {
+    const isRevoked = await authProvider.isSessionRevoked(session.loginId);
+    if (isRevoked) return null;
+  }
+
   const user = publicUser(userRecord);
   if (user && user.employeeId) {
     presenceMap.set(Number(user.employeeId), Date.now());
   }
+
   return { token, csrf: session.csrf, loginId: session.loginId || null, user };
 }
 
@@ -241,10 +360,18 @@ function securityHeaders(res, isApi = false) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=()');
+  res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=(), payment=(), usb=(), screen-wake-lock=()');
   res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
-  if (NODE_ENV === 'production') res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-  if (isApi) res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  res.setHeader('Content-Security-Policy', "default-src 'self'; connect-src 'self' wss:; media-src 'self' blob: data:; img-src 'self' data: blob:; font-src 'self' https://fonts.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'");
+  if (NODE_ENV === 'production' || String(process.env.COOKIE_SECURE || '').toLowerCase() === 'true') {
+    res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
+  }
+  if (isApi) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  }
 }
 
 function sendJson(res, status, payload, extraHeaders = {}) {
@@ -293,9 +420,13 @@ function readJson(req) {
 
 function sameOrigin(req) {
   const origin = req.headers.origin;
-  if (!origin) return true;
+  const referer = req.headers.referer;
+  const host = req.headers['x-forwarded-host'] || req.headers.host;
+  if (!origin && !referer) return true;
   try {
-    return new URL(origin).host === req.headers.host;
+    if (origin && new URL(origin).host !== host) return false;
+    if (referer && new URL(referer).host !== host) return false;
+    return true;
   } catch {
     return false;
   }
@@ -359,8 +490,58 @@ function safeMimeForName(name) {
     '.csv': 'text/csv; charset=utf-8',
     '.png': 'image/png',
     '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg'
+    '.jpeg': 'image/jpeg',
+    '.webp': 'image/webp',
+    '.gif': 'image/gif',
+    '.zip': 'application/zip'
   })[extension] || 'application/octet-stream';
+}
+
+function inspectUploadedContent(buffer, extension) {
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+    throw Object.assign(new Error('Uploaded file is empty.'), { status: 400 });
+  }
+
+  // Reject Windows executables (PE/EXE/DLL)
+  if (buffer.length >= 2 && buffer[0] === 0x4D && buffer[1] === 0x5A) {
+    throw Object.assign(new Error('Executable files are strictly forbidden.'), { status: 400 });
+  }
+
+  // Check header text for malicious web shells / script tags
+  const headerText = buffer.slice(0, 2048).toString('utf8').toLowerCase();
+  if (
+    headerText.includes('<script') ||
+    headerText.includes('<?php') ||
+    headerText.includes('<!doctype html') ||
+    headerText.includes('<html') ||
+    headerText.includes('<svg') ||
+    headerText.includes('javascript:')
+  ) {
+    throw Object.assign(new Error('Uploaded file failed security validation.'), { status: 400 });
+  }
+
+  const ext = String(extension || '').toLowerCase();
+  if (ext === '.pdf') {
+    if (buffer.length < 5 || buffer[0] !== 0x25 || buffer[1] !== 0x50 || buffer[2] !== 0x44 || buffer[3] !== 0x46 || buffer[4] !== 0x2D) {
+      throw Object.assign(new Error('Invalid PDF file signature.'), { status: 400 });
+    }
+  } else if (ext === '.png') {
+    if (buffer.length < 8 || buffer[0] !== 0x89 || buffer[1] !== 0x50 || buffer[2] !== 0x4E || buffer[3] !== 0x47 || buffer[4] !== 0x0D || buffer[5] !== 0x0A || buffer[6] !== 0x1A || buffer[7] !== 0x0A) {
+      throw Object.assign(new Error('Invalid PNG file signature.'), { status: 400 });
+    }
+  } else if (ext === '.jpg' || ext === '.jpeg') {
+    if (buffer.length < 3 || buffer[0] !== 0xFF || buffer[1] !== 0xD8 || buffer[2] !== 0xFF) {
+      throw Object.assign(new Error('Invalid JPEG file signature.'), { status: 400 });
+    }
+  } else if (['.docx', '.xlsx', '.pptx'].includes(ext)) {
+    if (buffer.length < 4 || buffer[0] !== 0x50 || buffer[1] !== 0x4B || buffer[2] !== 0x03 || buffer[3] !== 0x04) {
+      throw Object.assign(new Error('Invalid document file signature.'), { status: 400 });
+    }
+  } else if (['.doc', '.xls', '.ppt'].includes(ext)) {
+    if (buffer.length < 8 || buffer[0] !== 0xD0 || buffer[1] !== 0xCF || buffer[2] !== 0x11 || buffer[3] !== 0xE0) {
+      throw Object.assign(new Error('Invalid document file signature.'), { status: 400 });
+    }
+  }
 }
 
 function parseDataFile(file, required = true) {
@@ -384,10 +565,29 @@ function parseDataFile(file, required = true) {
   if (!buffer.length || buffer.length > MAX_FILE_BYTES) {
     throw Object.assign(new Error(`Documents must be ${Math.floor(MAX_FILE_BYTES / 1024 / 1024)} MB or smaller.`), { status: 400 });
   }
+  inspectUploadedContent(buffer, extension);
   return { name, type: safeMimeForName(name), buffer };
 }
 
-async function audit() { /* Existing system owns audit and login-history data. */ }
+async function audit(user, action, entity, entityId, details = '') {
+  if (!db || !db.ready) return;
+  try {
+    await db.run(
+      `INSERT INTO audit_logs (user_id, action, entity, entity_id, details, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        user?.id ? Number(user.id) : null,
+        String(action || '').slice(0, 80),
+        String(entity || '').slice(0, 80),
+        entityId ? String(entityId).slice(0, 100) : null,
+        String(details || '').slice(0, 1000),
+        nowIso()
+      ]
+    );
+  } catch (err) {
+    console.error('Audit log failure:', err.message);
+  }
+}
 
 function serializeLink(row) {
   return {
@@ -455,26 +655,18 @@ function serializeFeedback(row) {
   };
 }
 
-function isExecutiveManager(user) {
-  if (!user) return false;
-  const name = String(user.name || '').toLowerCase();
-  const username = String(user.username || '').toLowerCase();
-  return (
-    name.includes('suresh') ||
-    name.includes('radhakrishnan') ||
-    name.includes('manoj') ||
-    name.includes('kombissan') ||
-    username.includes('suresh') ||
-    username.includes('manoj')
-  );
+function isExecutiveLeadership(user) {
+  return monthly1on1Db.isExecutiveLeadership(user);
 }
 
 function canNominateOthers(user) {
-  return Boolean(user && (isAdmin(user) || isExecutiveManager(user)));
+  return Boolean(user && (isAdmin(user) || isExecutiveLeadership(user)));
 }
 
 function canViewAllApplications(user) {
-  return Boolean(user && (isAdmin(user) || isExecutiveManager(user)));
+  // Only CEO, Director, and Managing Director can view all employee applications.
+  // Super Admin, Service Admin, and regular employees only view their own nominations.
+  return isExecutiveLeadership(user);
 }
 
 function safeJsonParse(str, fallback = null) {
@@ -682,6 +874,7 @@ async function bootstrapPayload(auth) {
 }
 
 function loginCookie(token) {
+  const isSecure = NODE_ENV === 'production' || String(process.env.COOKIE_SECURE || '').toLowerCase() === 'true';
   const attributes = [
     `mc_session=${encodeURIComponent(token)}`,
     'Path=/',
@@ -689,13 +882,14 @@ function loginCookie(token) {
     'SameSite=Lax',
     `Max-Age=${Math.floor(SESSION_MS / 1000)}`
   ];
-  if (NODE_ENV === 'production') attributes.push('Secure');
+  if (isSecure) attributes.push('Secure');
   return attributes.join('; ');
 }
 
 function clearCookie() {
+  const isSecure = NODE_ENV === 'production' || String(process.env.COOKIE_SECURE || '').toLowerCase() === 'true';
   const attributes = ['mc_session=', 'Path=/', 'HttpOnly', 'SameSite=Lax', 'Max-Age=0'];
-  if (NODE_ENV === 'production') attributes.push('Secure');
+  if (isSecure) attributes.push('Secure');
   return attributes.join('; ');
 }
 
@@ -716,12 +910,18 @@ async function sendStoredFile(res, row) {
   if (!stat.isFile()) return sendError(res, 404, 'Document not found.', 'NOT_FOUND');
 
   securityHeaders(res, false);
-  const safeName = String(row.file_name || 'document').replace(/["\r\n]/g, '_');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+  const ext = path.extname(row.file_name || row.file_storage_key || '').toLowerCase();
+  const isInlineAllowed = ['.png', '.jpg', '.jpeg', '.pdf'].includes(ext);
+  const disposition = isInlineAllowed ? 'inline' : 'attachment';
+  const safeName = String(row.file_name || 'document').replace(/["\r\n\\]/g, '_');
   res.writeHead(200, {
     'Content-Type': row.file_type || 'application/octet-stream',
     'Content-Length': stat.size,
-    'Content-Disposition': `inline; filename="${safeName}"`,
-    'Cache-Control': 'private, no-store'
+    'Content-Disposition': `${disposition}; filename="${safeName}"`,
+    'Cache-Control': 'private, no-store, no-cache, must-revalidate',
+    'Pragma': 'no-cache'
   });
   const stream = fileStore.createReadStream(row.file_storage_key);
   stream.on('error', error => {
@@ -751,7 +951,8 @@ async function handleApi(req, res, url) {
     const ip = clientIp(req);
     const attemptKey = loginAttemptKey(ip, username);
     cleanupLoginAttempts();
-    if (!loginAllowed(attemptKey)) return sendError(res, 429, 'Too many sign-in attempts. Try again later.', 'RATE_LIMITED');
+    registerIpLoginAttempt(ip);
+    if (!await loginAllowed(attemptKey, ip, username)) return sendError(res, 429, 'Too many sign-in attempts. Try again later.', 'RATE_LIMITED');
 
     let row = null;
     try {
@@ -765,7 +966,7 @@ async function handleApi(req, res, url) {
     const ok = Boolean(row && row.active && row.portalAccess && passwordMatches);
 
     if (!ok) {
-      registerLoginFailure(attemptKey);
+      await registerLoginFailure(attemptKey, ip, username);
       await authProvider.recordLogin({
         userId: row?.id || null,
         status: 'FAILED',
@@ -773,20 +974,20 @@ async function handleApi(req, res, url) {
         deviceInfo: req.headers['user-agent'] || ''
       });
 
-      let errorMsg = 'Invalid username, password, or account status.';
-      if (!row) {
-        errorMsg = `Username '${username}' was not found in the database.`;
-      } else if (!passwordMatches) {
-        errorMsg = `Incorrect password for '${username}'.`;
-      } else if (!row.active) {
-        errorMsg = `User account '${username}' is set to INACTIVE in the database.`;
-      }
-
-      return sendError(res, 401, errorMsg, 'INVALID_CREDENTIALS');
+      // Resistant to account enumeration: generic error message always
+      return sendError(res, 401, 'Invalid username or password.', 'INVALID_CREDENTIALS');
     }
 
-    clearLoginFailures(attemptKey);
+    await clearLoginFailures(attemptKey);
     await authProvider.updateLastLogin(row.id);
+
+    // Transparently upgrade legacy password hashes (MD5, SHA-1, plaintext) to modern scrypt
+    if (row.passwordHash && !row.passwordHash.startsWith('scrypt$') && !/^\$2[aby]\$/.test(row.passwordHash)) {
+      authProvider.upgradePasswordHash(row.id, password).catch(err => {
+        console.warn('Transparent password upgrade deferred:', err.message);
+      });
+    }
+
     const loginId = await authProvider.recordLogin({
       userId: row.id,
       status: 'SUCCESS',
@@ -812,23 +1013,11 @@ async function handleApi(req, res, url) {
     if (chatService && empId) {
       await chatService.updatePresence(empId, 'OFFLINE').catch(() => {});
     }
-    if (empId) {
-      presenceMap.delete(Number(empId));
-    }
+    if (empId) presenceMap.delete(Number(empId));
     await authProvider.recordLogout(auth.loginId, auth.user.id);
-    return sendJson(res, 200, { ok: true }, { 'Set-Cookie': clearCookie() });
-  }
-
-  if (method === 'GET' && pathname === '/api/bootstrap') {
-    const auth = await requireAuth(req, res);
-    if (!auth) return;
-    return sendJson(res, 200, await bootstrapPayload(auth));
-  }
-
-  if (method === 'GET' && pathname === '/api/me') {
-    const auth = await requireAuth(req, res);
-    if (!auth) return;
-    return sendJson(res, 200, { user: auth.user, csrfToken: auth.csrf });
+    const isSecure = NODE_ENV === 'production' || String(process.env.COOKIE_SECURE || '').toLowerCase() === 'true';
+    const clearPinCookie = `mc_super_pin=; Path=/; HttpOnly; SameSite=Lax${isSecure ? '; Secure' : ''}; Max-Age=0`;
+    return sendJson(res, 200, { ok: true }, { 'Set-Cookie': [clearCookie(), clearPinCookie] });
   }
 
   if (pathname.startsWith('/api/tasks')) {
@@ -842,6 +1031,38 @@ async function handleApi(req, res, url) {
       const handled = await handleChatApi(req, res, url);
       if (handled) return;
     }
+  }
+
+  if (method === 'POST' && pathname === '/api/auth/verify-super-admin-pin') {
+    const auth = await requireAuth(req, res, { csrf: true });
+    if (!auth) return;
+    if (!monthly1on1Db.isSuperAdmin(auth.user)) {
+      return sendError(res, 403, 'PIN verification is only required for Super Admin.', 'FORBIDDEN');
+    }
+    const body = await readJson(req);
+    const pin = String(body.pin || '').trim();
+    const pinBuf = Buffer.from(pin);
+    const expectedBuf = Buffer.from(SUPER_ADMIN_PIN);
+    if (!pin || pinBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(pinBuf, expectedBuf)) {
+      return sendError(res, 401, 'Invalid Super Admin PIN. Access denied.', 'INVALID_PIN');
+    }
+    const pinToken = signSuperAdminPinToken(auth.user.id);
+    const isSecure = NODE_ENV === 'production' || String(process.env.COOKIE_SECURE || '').toLowerCase() === 'true';
+    return sendJson(res, 200, { ok: true, pinToken }, {
+      'Set-Cookie': `mc_super_pin=${encodeURIComponent(pinToken)}; Path=/; HttpOnly; SameSite=Lax${isSecure ? '; Secure' : ''}; Max-Age=7200`
+    });
+  }
+
+  if (method === 'GET' && pathname === '/api/bootstrap') {
+    const auth = await requireAuth(req, res);
+    if (!auth) return;
+    return sendJson(res, 200, await bootstrapPayload(auth));
+  }
+
+  if (method === 'GET' && pathname === '/api/me') {
+    const auth = await requireAuth(req, res);
+    if (!auth) return;
+    return sendJson(res, 200, { user: auth.user, csrfToken: auth.csrf });
   }
 
   if (method === 'POST' && pathname === '/api/links') {
@@ -1445,7 +1666,10 @@ async function handleApi(req, res, url) {
     );
 
     const userCanNominate = canNominateOthers(auth.user);
-    const userCanViewAll = canViewAllApplications(auth.user);
+    let userCanViewAll = canViewAllApplications(auth.user);
+    let pinRequired = false;
+
+
 
     let appRows = [];
     if (userCanViewAll) {
@@ -1470,6 +1694,7 @@ async function handleApi(req, res, url) {
       applications: applications,
       userCanNominateOthers: userCanNominate,
       userCanViewAll: userCanViewAll,
+      pinRequired,
       userProfile: userProfile,
       employees: employees
     });
@@ -1486,8 +1711,11 @@ async function handleApi(req, res, url) {
   }
 
   if (method === 'POST' && pathname === '/api/eoq/window') {
-    const auth = await requireAuth(req, res, { csrf: true, admin: true });
+    const auth = await requireAuth(req, res, { csrf: true });
     if (!auth) return;
+    if (!isAdmin(auth.user) && !canViewAllApplications(auth.user)) {
+      return sendError(res, 403, 'You do not have permission to configure nomination windows.', 'FORBIDDEN');
+    }
     const body = await readJson(req);
     const year = Number(body.year);
     if (!year || year < 2026 || year > 2100) return sendError(res, 400, 'Invalid year selected.', 'VALIDATION');
@@ -1520,11 +1748,12 @@ async function handleApi(req, res, url) {
     const appRow = await db.get(`SELECT * FROM eoq_nominations WHERE id=?`, [appId]);
     if (!appRow) return sendError(res, 404, 'Application not found.', 'NOT_FOUND');
 
-    if (!canViewAllApplications(auth.user) &&
-        Number(appRow.submitted_by_id) !== Number(auth.user.id) &&
-        Number(appRow.nominated_employee_id) !== Number(auth.user.id)) {
+    const isOwnApp = Number(appRow.submitted_by_id) === Number(auth.user.id) || Number(appRow.nominated_employee_id) === Number(auth.user.id);
+    if (!canViewAllApplications(auth.user) && !isOwnApp) {
       return sendError(res, 403, 'You do not have permission to view this application.', 'FORBIDDEN');
     }
+
+
 
     return sendJson(res, 200, { application: serializeEoqApplication(appRow) });
   }
@@ -1877,8 +2106,11 @@ async function handleApi(req, res, url) {
 
   match = pathname.match(/^\/api\/eoq\/applications\/([^/]+)\/review$/);
   if (match && method === 'POST') {
-    const auth = await requireAuth(req, res, { csrf: true, admin: true });
+    const auth = await requireAuth(req, res, { csrf: true });
     if (!auth) return;
+    if (!canViewAllApplications(auth.user)) {
+      return sendError(res, 403, 'Only executive leadership can review EOQ applications.', 'FORBIDDEN');
+    }
     const appId = decodeURIComponent(match[1]);
     const body = await readJson(req);
 
@@ -1898,9 +2130,1220 @@ async function handleApi(req, res, url) {
     const updatedRow = await db.get(`SELECT * FROM eoq_nominations WHERE id=?`, [appId]);
     return sendJson(res, 200, { application: serializeEoqApplication(updatedRow) });
   }
+  /* ============ MONTHLY 1:1 MEETING REPORT ============ */
+
+  const VALID_1ON1_STATUSES = monthly1on1Db.VALID_1ON1_STATUSES;
+  const VALID_1ON1_SECTIONS = monthly1on1Db.VALID_1ON1_SECTIONS;
+
+  function can1on1Review(user) {
+    return monthly1on1Db.canReviewAll1on1Reports(user);
+  }
+  function can1on1AdminAction(user) {
+    return monthly1on1Db.canReviewAll1on1Reports(user);
+  }
+
+  /* GET /api/monthly-1on1/windows — get reporting window for a given month */
+  if (method === 'GET' && pathname === '/api/monthly-1on1/windows') {
+    const auth = await requireAuth(req, res);
+    if (!auth) return;
+    const month = url.searchParams.get('month') || new Date().toISOString().slice(0, 7);
+    try {
+      const windowInfo = await monthly1on1Db.getWindowForMonth(db, month);
+      return sendJson(res, 200, { window: windowInfo });
+    } catch (err) {
+      return sendError(res, 400, err.message, 'VALIDATION');
+    }
+  }
+
+  /* POST /api/monthly-1on1/windows — Super Admin only: configure reporting window */
+  if (method === 'POST' && pathname === '/api/monthly-1on1/windows') {
+    const auth = await requireAuth(req, res, { csrf: true });
+    if (!auth) return;
+    if (!monthly1on1Db.canConfigure1on1Window(auth.user)) {
+      return sendError(res, 403, 'Only Super Admin is authorized to configure reporting windows.', 'FORBIDDEN');
+    }
+
+    const body = await readJson(req);
+    try {
+      const windowInfo = await monthly1on1Db.createOrUpdateWindow(db, {
+        reportingMonth: body.reporting_month,
+        startDate: body.start_date,
+        startTime: body.start_time,
+        endDate: body.end_date,
+        endTime: body.end_time,
+        auditUser: auth.user
+      });
+      return sendJson(res, 200, { window: windowInfo });
+    } catch (err) {
+      return sendError(res, err.status || 400, err.message, err.code || 'VALIDATION');
+    }
+  }
+
+  /* GET /api/monthly-1on1/windows/year — Super Admin: all 12 months for a year with window configuration and counts */
+  if (method === 'GET' && pathname === '/api/monthly-1on1/windows/year') {
+    const auth = await requireAuth(req, res);
+    if (!auth) return;
+    if (!monthly1on1Db.canConfigure1on1Window(auth.user)) {
+      return sendError(res, 403, 'Only Super Admin can access the 12-month window dashboard.', 'FORBIDDEN');
+    }
+    const yearParam = Number(url.searchParams.get('year') || new Date().getFullYear());
+    const selectedYear = (yearParam >= 2020 && yearParam <= 2100) ? yearParam : new Date().getFullYear();
+
+    // Calculate total expected applicants (active employees excluding Super Admin)
+    let totalEligibleApplicants = 0;
+    try {
+      const allEmps = await getEmployeesList(db);
+      totalEligibleApplicants = allEmps.filter(e => !['admin'].includes(e.role) && !monthly1on1Db.isSuperAdmin(e)).length;
+      if (totalEligibleApplicants === 0) totalEligibleApplicants = allEmps.length;
+    } catch {
+      totalEligibleApplicants = 1;
+    }
+
+    // Get aggregated stats by month for that year
+    const statsRows = await db.all(
+      `SELECT
+         MONTH(reporting_month) AS month_num,
+         COUNT(CASE WHEN status IN ('Submitted', 'Under Review', 'Completed', 'Approved', 'Rejected') THEN 1 END) AS submitted,
+         COUNT(CASE WHEN status='Approved' THEN 1 END) AS approved,
+         COUNT(CASE WHEN status='Rejected' THEN 1 END) AS rejected
+       FROM monthly_1on1_reports
+       WHERE record_type='report' AND YEAR(reporting_month)=? AND employee_id > 0
+       GROUP BY MONTH(reporting_month)`,
+      [selectedYear]
+    );
+
+    const statsMap = {};
+    for (const row of statsRows || []) {
+      statsMap[Number(row.month_num)] = {
+        submitted: Number(row.submitted || 0),
+        approved: Number(row.approved || 0),
+        rejected: Number(row.rejected || 0)
+      };
+    }
+
+    const MONTH_NAMES = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+
+    const months = [];
+    for (let m = 1; m <= 12; m++) {
+      const monthStr = String(m).padStart(2, '0');
+      const monthKey = `${selectedYear}-${monthStr}-01`;
+      const win = await monthly1on1Db.getWindowForMonth(db, monthKey);
+      const mStats = statsMap[m] || { submitted: 0, approved: 0, rejected: 0 };
+      const pending = Math.max(0, totalEligibleApplicants - mStats.submitted);
+
+      months.push({
+        month: m,
+        month_name: MONTH_NAMES[m - 1],
+        reporting_month: monthKey,
+        year: selectedYear,
+        window: win,
+        stats: {
+          submitted: mStats.submitted,
+          approved: mStats.approved,
+          rejected: mStats.rejected,
+          pending: pending
+        }
+      });
+    }
+
+    return sendJson(res, 200, {
+      year: selectedYear,
+      total_eligible_applicants: totalEligibleApplicants,
+      months
+    });
+  }
+
+  /* POST /api/monthly-1on1/windows/close — Super Admin manual close */
+  if (method === 'POST' && pathname === '/api/monthly-1on1/windows/close') {
+    const auth = await requireAuth(req, res, { csrf: true });
+    if (!auth) return;
+    if (!monthly1on1Db.canConfigure1on1Window(auth.user)) {
+      return sendError(res, 403, 'Only Super Admin is authorized to close reporting windows.', 'FORBIDDEN');
+    }
+    const body = await readJson(req);
+    try {
+      const windowInfo = await monthly1on1Db.closeWindow(db, {
+        reportingMonth: body.reporting_month,
+        adminUser: auth.user
+      });
+      return sendJson(res, 200, { ok: true, window: windowInfo });
+    } catch (err) {
+      return sendError(res, err.status || 400, err.message, err.code || 'VALIDATION');
+    }
+  }
+
+  /* POST /api/monthly-1on1/windows/manual-open & /open — Super Admin manual open */
+  if (method === 'POST' && (pathname === '/api/monthly-1on1/windows/manual-open' || pathname === '/api/monthly-1on1/windows/open')) {
+    const auth = await requireAuth(req, res, { csrf: true });
+    if (!auth) return;
+    if (!monthly1on1Db.canConfigure1on1Window(auth.user)) {
+      return sendError(res, 403, 'Only Super Admin is authorized to open reporting windows.', 'FORBIDDEN');
+    }
+    const body = await readJson(req);
+    try {
+      const windowInfo = await monthly1on1Db.manualOpenWindow(db, {
+        reportingMonth: body.reporting_month,
+        adminUser: auth.user,
+        reason: cleanText(body.reason, 1000) || 'Manually opened by Super Admin'
+      });
+      return sendJson(res, 200, { ok: true, window: windowInfo });
+    } catch (err) {
+      return sendError(res, err.status || 400, err.message, err.code || 'VALIDATION');
+    }
+  }
+
+  /* POST /api/monthly-1on1/windows/reopen — Super Admin explicit reopen */
+  if (method === 'POST' && pathname === '/api/monthly-1on1/windows/reopen') {
+    const auth = await requireAuth(req, res, { csrf: true });
+    if (!auth) return;
+    if (!monthly1on1Db.canConfigure1on1Window(auth.user)) {
+      return sendError(res, 403, 'Only Super Admin is authorized to reopen reporting windows.', 'FORBIDDEN');
+    }
+    const body = await readJson(req);
+    try {
+      const windowInfo = await monthly1on1Db.reopenWindow(db, {
+        reportingMonth: body.reporting_month,
+        adminUser: auth.user,
+        reason: cleanText(body.reason, 1000, true)
+      });
+      return sendJson(res, 200, { ok: true, window: windowInfo });
+    } catch (err) {
+      return sendError(res, err.status || 400, err.message, err.code || 'VALIDATION');
+    }
+  }
+
+  /* GET /api/monthly-1on1/pending-employees — Super Admin & Service Admin "See Who" list */
+  if (method === 'GET' && pathname === '/api/monthly-1on1/pending-employees') {
+    const auth = await requireAuth(req, res);
+    if (!auth) return;
+    if (!monthly1on1Db.canReviewAll1on1Reports(auth.user)) {
+      return sendError(res, 403, 'Only Super Admin and Service Admin can access the pending employees list.', 'FORBIDDEN');
+    }
+
+    const yearParam = Number(url.searchParams.get('year') || new Date().getFullYear());
+    const monthParam = url.searchParams.get('month');
+    let monthKey;
+    if (monthParam && monthParam.includes('-')) {
+      monthKey = monthly1on1Db.normalizeReportingMonth(monthParam);
+    } else {
+      const mNum = Math.max(1, Math.min(12, Number(monthParam || new Date().getMonth() + 1)));
+      monthKey = `${yearParam}-${String(mNum).padStart(2, '0')}-01`;
+    }
+
+    // 1. Get all active employees, excluding Super Admin
+    let allEmps = [];
+    try {
+      allEmps = await getEmployeesList(db);
+    } catch {
+      allEmps = [];
+    }
+    const expectedApplicants = allEmps.filter(e => !['admin'].includes(e.role) && !monthly1on1Db.isSuperAdmin(e));
+
+    // 2. Fetch existing reports for that month
+    const existingReports = await db.all(
+      `SELECT employee_id, status FROM monthly_1on1_reports WHERE record_type='report' AND reporting_month=?`,
+      [monthKey]
+    );
+
+    const reportStatusByEmpId = new Map();
+    for (const r of existingReports || []) {
+      reportStatusByEmpId.set(Number(r.employee_id), r.status);
+    }
+
+    // 3. Classify each expected applicant
+    const pendingList = [];
+    for (const emp of expectedApplicants) {
+      const st = reportStatusByEmpId.get(Number(emp.id));
+      if (!st) {
+        pendingList.push({
+          id: emp.id,
+          name: emp.name,
+          employee_code: emp.employee_code || `EMP-${String(emp.id).padStart(4, '0')}`,
+          department: emp.department || 'General',
+          designation: emp.designation || 'Team Member',
+          reporting_month: monthKey,
+          application_status: 'Not Started'
+        });
+      } else if (st === 'Draft') {
+        pendingList.push({
+          id: emp.id,
+          name: emp.name,
+          employee_code: emp.employee_code || `EMP-${String(emp.id).padStart(4, '0')}`,
+          department: emp.department || 'General',
+          designation: emp.designation || 'Team Member',
+          reporting_month: monthKey,
+          application_status: 'Draft Not Submitted'
+        });
+      }
+      // Submitted, Under Review, Completed, Approved, Rejected are received
+    }
+
+    return sendJson(res, 200, {
+      ok: true,
+      reporting_month: monthKey,
+      total_expected: expectedApplicants.length,
+      pending_count: pendingList.length,
+      count: pendingList.length,
+      employees: pendingList,
+      pending_employees: pendingList
+    });
+  }
+
+  /* GET /api/monthly-1on1/overview — dashboard overview for the current user */
+  if (method === 'GET' && pathname === '/api/monthly-1on1/overview') {
+    const auth = await requireAuth(req, res);
+    if (!auth) return;
+    const yearParam = Number(url.searchParams.get('year') || new Date().getFullYear());
+    const selectedYear = (yearParam >= 2020 && yearParam <= 2100) ? yearParam : new Date().getFullYear();
+    const currentMonthStr = new Date().toISOString().slice(0, 7);
+
+    // Current window info
+    const currentWindow = await monthly1on1Db.getWindowForMonth(db, currentMonthStr);
+
+    // Find the single active open reporting window (enforcing single open window rule)
+    const activeOpenWindow = await monthly1on1Db.getActiveOpenWindow(db);
+    const openWindows = activeOpenWindow ? [activeOpenWindow] : [];
+
+    let reports = [];
+    let history = [];
+    if (monthly1on1Db.canSubmit1on1(auth.user)) {
+      reports = await db.all(
+        `SELECT id, reporting_month, status, submitted_at, meeting_date, reviewer_name, reviewer_id, director_name, updated_at
+         FROM monthly_1on1_reports
+         WHERE employee_id=? AND YEAR(reporting_month)=? AND record_type='report'
+         ORDER BY reporting_month ASC`,
+        [auth.user.id, selectedYear]
+      );
+
+      // Complete history for My Monthly 1:1 Application History (all months)
+      const allHistoryRows = await db.all(
+        `SELECT id, reporting_month, status, submitted_at, meeting_date, reviewer_name, reviewer_id, director_name,
+                director_feedback_json, director_feedback_at, director_feedback_by_name, approved_at, rejected_at, decision_notes, rejection_reason, revision_reason, updated_at, created_at
+         FROM monthly_1on1_reports
+         WHERE employee_id=? AND record_type='report'
+         ORDER BY reporting_month DESC`,
+        [auth.user.id]
+      );
+      history = (allHistoryRows || []).map(r => ({
+        id: r.id,
+        reporting_month: r.reporting_month,
+        status: r.status,
+        submitted_at: r.submitted_at || '',
+        created_at: r.created_at || '',
+        updated_at: r.updated_at || '',
+        decision_notes: r.decision_notes || '',
+        rejection_reason: r.rejection_reason || '',
+        revision_reason: r.revision_reason || '',
+        approved_at: r.approved_at || '',
+        rejected_at: r.rejected_at || '',
+        director_feedback_status: (r.approved_at || r.rejected_at || r.decision_notes || r.rejection_reason || r.director_feedback_at) ? 'Feedback Available' : 'Pending Review',
+        director_feedback_at: r.director_feedback_at || '',
+        director_feedback_by_name: r.director_feedback_by_name || ''
+      }));
+    }
+
+    // Only authorized reviewers receive team statistics or total company counts
+    const isReviewer = monthly1on1Db.canReviewAll1on1Reports(auth.user);
+    let totalEmployeesOfMypreneur = undefined;
+    let teamSummary = null;
+
+    if (isReviewer) {
+      try {
+        const allEmps = await getEmployeesList(db);
+        totalEmployeesOfMypreneur = allEmps.length;
+      } catch {
+        totalEmployeesOfMypreneur = 0;
+      }
+
+      const statsRow = await db.get(
+        `SELECT
+           COUNT(DISTINCT employee_id) AS total_active_employees,
+           COUNT(CASE WHEN status='Submitted' THEN 1 END) AS submitted,
+           COUNT(CASE WHEN status='Draft' THEN 1 END) AS draft,
+           COUNT(CASE WHEN status='Under Review' THEN 1 END) AS under_review,
+           COUNT(CASE WHEN status='Completed' THEN 1 END) AS completed,
+           COUNT(CASE WHEN status='Approved' THEN 1 END) AS approved,
+           COUNT(CASE WHEN status='Rejected' THEN 1 END) AS rejected,
+           COUNT(CASE WHEN status='Revision Requested' THEN 1 END) AS revision_requested
+         FROM monthly_1on1_reports
+         WHERE YEAR(reporting_month)=? AND record_type='report' AND employee_id > 0`,
+        [selectedYear]
+      );
+
+      teamSummary = {
+        total_employees_mypreneur: totalEmployeesOfMypreneur,
+        total_team_members: totalEmployeesOfMypreneur,
+        submitted: Number(statsRow?.submitted || 0),
+        draft: Number(statsRow?.draft || 0),
+        under_review: Number(statsRow?.under_review || 0),
+        completed: Number(statsRow?.completed || 0),
+        approved: Number(statsRow?.approved || 0),
+        rejected: Number(statsRow?.rejected || 0),
+        revision_requested: Number(statsRow?.revision_requested || 0)
+      };
+    }
+
+    return sendJson(res, 200, {
+      year: selectedYear,
+      window: currentWindow,
+      activeOpenWindow: activeOpenWindow || null,
+      openWindows,
+      total_employees_mypreneur: isReviewer ? totalEmployeesOfMypreneur : undefined,
+      canSubmit: monthly1on1Db.canSubmit1on1(auth.user),
+      isSuperAdmin: monthly1on1Db.isSuperAdmin(auth.user),
+      isServiceAdmin: monthly1on1Db.isServiceAdmin(auth.user),
+      reports: (reports || []).map(r => ({
+        id: r.id,
+        reporting_month: r.reporting_month,
+        status: r.status,
+        submitted_at: r.submitted_at || '',
+        meeting_date: r.meeting_date || null,
+        reviewer_name: r.reviewer_name || '',
+        director_name: r.director_name || 'Director',
+        updated_at: r.updated_at
+      })),
+      history,
+      teamSummary
+    });
+  }
+
+  /* GET /api/monthly-1on1/reports — list employee reports */
+  if (method === 'GET' && pathname === '/api/monthly-1on1/reports') {
+    const auth = await requireAuth(req, res);
+    if (!auth) return;
+
+    if (!monthly1on1Db.canSubmit1on1(auth.user)) {
+      return sendJson(res, 200, { reports: [], total: 0, page: 1, limit: 20 });
+    }
+
+    const year = Number(url.searchParams.get('year') || 0);
+    const month = Number(url.searchParams.get('month') || 0);
+    const status = url.searchParams.get('status') || '';
+    const q = String(url.searchParams.get('q') || '').trim();
+    const page = Math.max(1, Number(url.searchParams.get('page') || 1));
+    const limit = 20;
+    const offset = (page - 1) * limit;
+
+    let whereClause = `WHERE employee_id=? AND record_type='report'`;
+    const params = [auth.user.id];
+    if (year) { whereClause += ' AND YEAR(reporting_month)=?'; params.push(year); }
+    if (month) { whereClause += ' AND MONTH(reporting_month)=?'; params.push(month); }
+    if (status && VALID_1ON1_STATUSES.includes(status)) { whereClause += ' AND status=?'; params.push(status); }
+    if (q) {
+      whereClause += ' AND (id LIKE ? OR employee_name LIKE ? OR department LIKE ? OR reviewer_name LIKE ?)';
+      params.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
+    }
+
+    const rows = await db.all(
+      `SELECT id, employee_id, employee_name, department, reviewer_name, director_name, reporting_month, meeting_date, submitted_at, status, updated_at, manager_notes_json, decision_notes, rejection_reason
+       FROM monthly_1on1_reports ${whereClause}
+       ORDER BY reporting_month DESC
+       LIMIT ${limit} OFFSET ${offset}`,
+      params
+    );
+    const countRow = await db.get(`SELECT COUNT(*) AS total FROM monthly_1on1_reports ${whereClause}`, params);
+    const reports = (rows || []).map(r => {
+      let notes = null;
+      try {
+        notes = r.manager_notes_json ? (typeof r.manager_notes_json === 'string' ? JSON.parse(r.manager_notes_json) : r.manager_notes_json) : null;
+      } catch (e) {}
+      return {
+        ...r,
+        manager_notes: notes
+      };
+    });
+    return sendJson(res, 200, { reports, total: Number(countRow?.total || 0), page, limit });
+  }
+
+  /* POST /api/monthly-1on1/reports — create new report (draft) */
+  if (method === 'POST' && pathname === '/api/monthly-1on1/reports') {
+    const auth = await requireAuth(req, res, { csrf: true });
+    if (!auth) return;
+
+    // Super Admin must not apply or submit personal reports
+    if (!monthly1on1Db.canSubmit1on1(auth.user)) {
+      return sendError(res, 403, 'Super Admin is an administrative role and cannot create or submit personal Monthly 1:1 reports.', 'SUPER_ADMIN_CANNOT_APPLY');
+    }
+
+    if (!checkActionRateLimit('report_create:' + auth.user.id, 15, 60000)) {
+      return sendError(res, 429, 'Too many report requests. Please wait a moment.', 'RATE_LIMITED');
+    }
+
+    const body = await readJson(req);
+
+    let reportingMonth;
+    try {
+      reportingMonth = monthly1on1Db.normalizeReportingMonth(body.reporting_month);
+    } catch (e) {
+      return sendError(res, 400, 'Please select a valid reporting month (YYYY-MM).', 'VALIDATION');
+    }
+
+    // Verify reporting window is open for this month
+    const windowInfo = await monthly1on1Db.getWindowForMonth(db, reportingMonth);
+    if (windowInfo.status !== 'open') {
+      return sendError(res, 403, `Reporting window for ${reportingMonth} is currently ${windowInfo.status}. Reports can only be created while the window is Open.`, 'WINDOW_NOT_OPEN');
+    }
+
+    const profile = await getEmployeeProfile(db, auth.user.id);
+    try {
+      const report = await monthly1on1Db.createMonthly1on1Report(db, {
+        employeeId: auth.user.id,
+        employeeName: auth.user.name || profile?.name || auth.user.username,
+        department: profile?.department || auth.user.team || '',
+        employeeRole: profile?.designation || auth.user.title || '',
+        reportingMonthInput: reportingMonth,
+        auditUser: auth.user
+      });
+      return sendJson(res, 201, { report });
+    } catch (err) {
+      if (err.code === 'DUPLICATE_REPORT') {
+        return sendError(res, 400, 'A report already exists for this month. You may continue editing your draft or view your submitted report.', 'DUPLICATE');
+      }
+      return sendError(res, err.status || 400, err.message, err.code || 'VALIDATION');
+    }
+  }
+
+  /* GET /api/monthly-1on1/reports/:id */
+  match = pathname.match(/^\/api\/monthly-1on1\/reports\/([^/]+)$/);
+  if (match && method === 'GET') {
+    const auth = await requireAuth(req, res);
+    if (!auth) return;
+    const reportId = decodeURIComponent(match[1]);
+    const report = await monthly1on1Db.getMonthly1on1ReportById(db, reportId);
+    if (!report || report.record_type === 'window') return sendError(res, 404, 'Report not found.', 'NOT_FOUND');
+
+    if (!monthly1on1Db.canUserAccessReport(auth.user, report, 'view')) {
+      return sendError(res, 403, 'You do not have permission to view this report.', 'FORBIDDEN');
+    }
+
+    const windowInfo = await monthly1on1Db.getWindowForMonth(db, report.reporting_month);
+    return sendJson(res, 200, {
+      report: {
+        ...report,
+        is_window_open: windowInfo.status === 'open',
+        window_start_ist: windowInfo.start_ist,
+        window_end_ist: windowInfo.end_ist
+      }
+    });
+  }
+
+  /* PATCH /api/monthly-1on1/reports/:id — save draft or edits */
+  if (match && method === 'PATCH') {
+    const auth = await requireAuth(req, res, { csrf: true });
+    if (!auth) return;
+    const reportId = decodeURIComponent(match[1]);
+    const report = await monthly1on1Db.getMonthly1on1ReportById(db, reportId);
+    if (!report || report.record_type === 'window') return sendError(res, 404, 'Report not found.', 'NOT_FOUND');
+
+    const isOwner = Number(report.employee_id) === Number(auth.user.id);
+    const body = await readJson(req);
+
+    if (isOwner) {
+      if (!monthly1on1Db.canSubmit1on1(auth.user)) {
+        return sendError(res, 403, 'Super Admin cannot modify personal reports.', 'FORBIDDEN');
+      }
+
+// Approved report modifications allowed while reporting window remains open
+
+      // Check reporting window
+      const windowInfo = await monthly1on1Db.getWindowForMonth(db, report.reporting_month);
+      if (windowInfo.status !== 'open') {
+        return sendError(res, 403, `Reporting window for ${report.reporting_month} is closed. Modifications are no longer permitted.`, 'WINDOW_CLOSED');
+      }
+
+      try {
+        const headerUpdates = {};
+        if (body.meeting_date !== undefined) headerUpdates.meeting_date = body.meeting_date;
+        if (body.work_location !== undefined) headerUpdates.work_location = cleanText(body.work_location, 180);
+        if (body.current_projects !== undefined) headerUpdates.current_projects = cleanText(body.current_projects, 5000);
+        if (body.overall_status !== undefined) headerUpdates.overall_status = body.overall_status;
+        if (body.capacity_for_additional_responsibilities !== undefined) headerUpdates.capacity_for_additional_responsibilities = body.capacity_for_additional_responsibilities;
+        if (body.additional_responsibility_details !== undefined) headerUpdates.additional_responsibility_details = cleanText(body.additional_responsibility_details, 5000);
+
+        const sections = body.items || {
+          completed_deliverables: body.completed_deliverables,
+          pending_tasks: body.pending_tasks,
+          challenges_support: body.challenges_support,
+          responsibility_readiness: body.responsibility_readiness,
+          improvement_suggestions: body.improvement_suggestions,
+          monthly_priorities: body.monthly_priorities
+        };
+
+        const updated = await monthly1on1Db.saveMonthly1on1Draft(db, {
+          reportId,
+          headerUpdates,
+          sections,
+          expectedUpdatedAt: body.expected_updated_at || body.updated_at || null,
+          auditUser: auth.user
+        });
+        return sendJson(res, 200, { report: updated });
+      } catch (err) {
+        return sendError(res, err.status || 400, err.message, err.code || 'VALIDATION');
+      }
+    }
+
+    // Reviewer saving manager notes (Service Admin or Super Admin)
+    if (monthly1on1Db.canReviewAll1on1Reports(auth.user)) {
+      try {
+        const notes = body.manager_notes || body;
+        const updated = await monthly1on1Db.saveMonthly1on1ReviewNotes(db, {
+          reportId,
+          managerNotes: {
+            key_observation: cleanText(notes.key_observation, 5000),
+            final_responsibility_assigned: cleanText(notes.final_responsibility_assigned || notes.final_responsibility, 5000),
+            meeting_date: validDate(notes.meeting_date) ? notes.meeting_date : (validDate(notes.deadline) ? notes.deadline : (validDate(notes.follow_up_date) ? notes.follow_up_date : null)),
+            follow_up_date: validDate(notes.meeting_date) ? notes.meeting_date : (validDate(notes.deadline) ? notes.deadline : (validDate(notes.follow_up_date) ? notes.follow_up_date : null)),
+            deadline: validDate(notes.meeting_date) ? notes.meeting_date : (validDate(notes.deadline) ? notes.deadline : (validDate(notes.follow_up_date) ? notes.follow_up_date : null)),
+            additional_comments: cleanText(notes.additional_comments, 5000)
+          },
+          reviewerId: auth.user.id,
+          auditUser: auth.user
+        });
+        return sendJson(res, 200, { report: updated });
+      } catch (err) {
+        return sendError(res, err.status || 400, err.message, err.code || 'VALIDATION');
+      }
+    }
+
+    return sendError(res, 403, 'You do not have permission to edit this report.', 'FORBIDDEN');
+  }
+
+  /* POST /api/monthly-1on1/reports/:id/attachments — upload deliverable proof (image/PDF) */
+  match = pathname.match(/^\/api\/monthly-1on1\/reports\/([^/]+)\/attachments$/);
+  if (match && method === 'POST') {
+    const auth = await requireAuth(req, res, { csrf: true });
+    if (!auth) return;
+    const reportId = decodeURIComponent(match[1]);
+    const report = await monthly1on1Db.getMonthly1on1ReportById(db, reportId);
+    if (!report || report.record_type === 'window') return sendError(res, 404, 'Report not found.', 'NOT_FOUND');
+
+    const isOwner = Number(report.employee_id) === Number(auth.user.id);
+    if (!isOwner && !monthly1on1Db.canReviewAll1on1Reports(auth.user)) {
+      return sendError(res, 403, 'You do not have permission to upload attachments for this report.', 'FORBIDDEN');
+    }
+
+    if (report.status === 'Approved') {
+      return sendError(res, 400, 'Approved reports cannot accept new attachments.', 'REPORT_APPROVED');
+    }
+
+    // Window must be open for uploads
+    const windowInfo = await monthly1on1Db.getWindowForMonth(db, report.reporting_month);
+    if (windowInfo.status !== 'open') {
+      return sendError(res, 403, `Reporting window for ${report.reporting_month} is closed. Attachments cannot be uploaded after the window has closed.`, 'WINDOW_CLOSED');
+    }
+
+    if (!checkActionRateLimit('proof_upload:' + auth.user.id, 20, 60000)) {
+      return sendError(res, 429, 'Upload rate limit exceeded. Please wait a minute.', 'RATE_LIMITED');
+    }
+
+    const body = await readJson(req);
+    let parsedFile;
+    try {
+      parsedFile = parseDataFile(body.file, true);
+    } catch (e) {
+      return sendError(res, 400, e.message || 'Invalid file payload.', 'INVALID_FILE');
+    }
+
+    // Max 10MB per deliverable attachment
+    const MAX_PROOF_BYTES = 10 * 1024 * 1024;
+    if (parsedFile.buffer.length > MAX_PROOF_BYTES) {
+      return sendError(res, 400, 'File is too large. Maximum deliverable attachment size is 10 MB.', 'FILE_TOO_LARGE');
+    }
+
+    // Server-side magic-byte content inspection
+    let inspection;
+    try {
+      inspection = monthly1on1Db.inspectProofBuffer(parsedFile.buffer, parsedFile.name);
+    } catch (err) {
+      return sendError(res, 400, err.message || 'Unsupported file type. Only JPG, PNG, WEBP images and PDF documents are allowed.', 'INVALID_FILE_TYPE');
+    }
+
+    // Store outside web root using safe random name in monthly-1on1 category
+    const saved = await fileStore.save('monthly-1on1', parsedFile.name, parsedFile.buffer);
+
+    return sendJson(res, 200, {
+      ok: true,
+      proof: {
+        type: 'file',
+        original_name: parsedFile.name,
+        storage_key: saved.storageKey || saved.key,
+        mime_type: inspection.mimeType,
+        size: parsedFile.buffer.length
+      }
+    });
+  }
+
+  /* GET /api/monthly-1on1/reports/:id/attachment — secure download/preview of deliverable proof */
+  match = pathname.match(/^\/api\/monthly-1on1\/reports\/([^/]+)\/attachment$/);
+  if (match && method === 'GET') {
+    const auth = await requireAuth(req, res);
+    if (!auth) return;
+    const reportId = decodeURIComponent(match[1]);
+    const report = await monthly1on1Db.getMonthly1on1ReportById(db, reportId);
+    if (!report || report.record_type === 'window') return sendError(res, 404, 'Report not found.', 'NOT_FOUND');
+
+    if (!monthly1on1Db.canUserAccessReport(auth.user, report, 'view')) {
+      return sendError(res, 403, 'You do not have permission to view attachments for this report.', 'FORBIDDEN');
+    }
+
+    const storageKey = url.searchParams.get('key');
+    if (!storageKey || !storageKey.startsWith('monthly-1on1/')) {
+      return sendError(res, 400, 'Invalid attachment storage key.', 'INVALID_KEY');
+    }
+
+    // Verify attachment ownership: key must belong to this specific report
+    let keyBelongsToReport = false;
+    if (report.items && typeof report.items === 'object') {
+      const itemsJson = JSON.stringify(report.items);
+      if (itemsJson.includes(storageKey)) {
+        keyBelongsToReport = true;
+      }
+    }
+    if (!keyBelongsToReport) {
+      return sendError(res, 403, 'Access denied. The specified attachment does not belong to this report.', 'FORBIDDEN');
+    }
+
+    try {
+      const stat = await fileStore.stat(storageKey);
+      if (!stat.isFile()) return sendError(res, 404, 'Attachment file not found.', 'NOT_FOUND');
+
+      const mime = safeMimeForName(storageKey);
+      const isPdfOrImage = mime.startsWith('image/') || mime === 'application/pdf';
+      const disposition = isPdfOrImage ? 'inline' : 'attachment';
+      const filename = path.basename(storageKey);
+
+      securityHeaders(res, false);
+      // Strict Content Security Policy on preview to prevent untrusted files from running scripts under trusted origin
+      res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Cache-Control', 'private, max-age=86400');
+      res.setHeader('Content-Type', mime || 'application/octet-stream');
+      res.setHeader('Content-Length', stat.size);
+      res.setHeader('Content-Disposition', `${disposition}; filename="${encodeURIComponent(filename)}"`);
+
+      if (req.method === 'HEAD') return res.end();
+      const stream = fileStore.createReadStream(storageKey);
+      stream.on('error', err => {
+        if (!res.headersSent) sendError(res, 500, 'Failed to stream attachment.', 'SERVER_ERROR');
+      });
+      return stream.pipe(res);
+    } catch (err) {
+      return sendError(res, 404, 'Attachment file not found.', 'NOT_FOUND');
+    }
+  }
+
+  /* POST /api/monthly-1on1/reports/:id/submit */
+  match = pathname.match(/^\/api\/monthly-1on1\/reports\/([^/]+)\/submit$/);
+  if (match && method === 'POST') {
+    const auth = await requireAuth(req, res, { csrf: true });
+    if (!auth) return;
+
+    if (!monthly1on1Db.canSubmit1on1(auth.user)) {
+      return sendError(res, 403, 'Super Admin cannot submit personal Monthly 1:1 reports.', 'FORBIDDEN');
+    }
+
+    const reportId = decodeURIComponent(match[1]);
+    const report = await monthly1on1Db.getMonthly1on1ReportById(db, reportId);
+    if (!report || report.record_type === 'window') return sendError(res, 404, 'Report not found.', 'NOT_FOUND');
+    if (Number(report.employee_id) !== Number(auth.user.id)) return sendError(res, 403, 'You can only submit your own report.', 'FORBIDDEN');
+
+// Resubmission of approved reports allowed while window remains open
+
+    // Verify reporting window is open
+    const windowInfo = await monthly1on1Db.getWindowForMonth(db, report.reporting_month);
+    if (windowInfo.status !== 'open') {
+      return sendError(res, 403, `Reporting window for ${report.reporting_month} is closed. Submissions are no longer permitted.`, 'WINDOW_CLOSED');
+    }
+
+    const body = await readJson(req);
+    try {
+      const updated = await monthly1on1Db.submitMonthly1on1Report(db, {
+        reportId,
+        acknowledged: Boolean(body.acknowledged || body.employee_acknowledged),
+        sections: body.items || {
+          completed_deliverables: body.completed_deliverables,
+          pending_tasks: body.pending_tasks,
+          challenges_support: body.challenges_support,
+          responsibility_readiness: body.responsibility_readiness,
+          improvement_suggestions: body.improvement_suggestions,
+          monthly_priorities: body.monthly_priorities
+        },
+        headerUpdates: {
+          meeting_date: body.meeting_date,
+          work_location: body.work_location,
+          current_projects: body.current_projects,
+          overall_status: body.overall_status,
+          capacity_for_additional_responsibilities: body.capacity_for_additional_responsibilities,
+          additional_responsibility_details: body.additional_responsibility_details
+        },
+        auditUser: auth.user
+      });
+      return sendJson(res, 200, { report: updated });
+    } catch (err) {
+      return sendError(res, err.status || 400, err.message, err.code || 'VALIDATION');
+    }
+  }
+
+  /* POST /api/monthly-1on1/reports/:id/approve — Super Admin or Service Admin only */
+  match = pathname.match(/^\/api\/monthly-1on1\/reports\/([^/]+)\/approve$/);
+  if (match && method === 'POST') {
+    const auth = await requireAuth(req, res, { csrf: true });
+    if (!auth) return;
+    if (!monthly1on1Db.canApproveOrReject1on1(auth.user)) {
+      return sendError(res, 403, 'Only Super Admin and Service Admin are authorized to approve reports.', 'FORBIDDEN');
+    }
+
+    const reportId = decodeURIComponent(match[1]);
+    const body = await readJson(req);
+    const feedbackText = cleanText(body.manager_feedback || body.comments, 5000);
+    try {
+      const updated = await monthly1on1Db.approveMonthly1on1Report(db, {
+        reportId,
+        adminUser: auth.user,
+        comments: feedbackText,
+        managerNotes: body.manager_notes || (feedbackText ? { additional_comments: feedbackText } : null)
+      });
+      return sendJson(res, 200, { report: updated });
+    } catch (err) {
+      return sendError(res, err.status || 400, err.message, err.code || 'VALIDATION');
+    }
+  }
+
+  /* POST /api/monthly-1on1/reports/:id/reject — Super Admin or Service Admin only (requires reason) */
+  match = pathname.match(/^\/api\/monthly-1on1\/reports\/([^/]+)\/reject$/);
+  if (match && method === 'POST') {
+    const auth = await requireAuth(req, res, { csrf: true });
+    if (!auth) return;
+    if (!monthly1on1Db.canApproveOrReject1on1(auth.user)) {
+      return sendError(res, 403, 'Only Super Admin and Service Admin are authorized to reject reports.', 'FORBIDDEN');
+    }
+
+    const reportId = decodeURIComponent(match[1]);
+    const body = await readJson(req);
+    const reason = cleanText(body.manager_feedback || body.reason, 2000, true);
+    if (!reason) {
+      return sendError(res, 400, 'Manager feedback or rejection reason is required.', 'REJECTION_REASON_REQUIRED');
+    }
+
+    try {
+      const updated = await monthly1on1Db.rejectMonthly1on1Report(db, {
+        reportId,
+        adminUser: auth.user,
+        reason,
+        comments: cleanText(body.comments || body.manager_feedback, 5000)
+      });
+      return sendJson(res, 200, { report: updated });
+    } catch (err) {
+      return sendError(res, err.status || 400, err.message, err.code || 'VALIDATION');
+    }
+  }
+
+  /* POST /api/monthly-1on1/reports/:id/feedback — Director / Admin feedback */
+  match = pathname.match(/^\/api\/monthly-1on1\/reports\/([^/]+)\/feedback$/);
+  if (match && method === 'POST') {
+    const auth = await requireAuth(req, res, { csrf: true });
+    if (!auth) return;
+
+    const reportId = decodeURIComponent(match[1]);
+    const body = await readJson(req);
+    const feedbackText = cleanText(body.feedback, 5000, true);
+    if (!feedbackText) {
+      return sendError(res, 400, 'Director feedback content is required.', 'FEEDBACK_REQUIRED');
+    }
+
+    try {
+      const updated = await monthly1on1Db.saveDirectorFeedback(db, {
+        reportId,
+        directorUser: auth.user,
+        feedback: feedbackText,
+        recommendations: cleanText(body.recommendations, 5000),
+        improvements: cleanText(body.improvements, 5000),
+        remarks: cleanText(body.remarks, 5000)
+      });
+      return sendJson(res, 200, { ok: true, report: updated });
+    } catch (err) {
+      return sendError(res, err.status || 400, err.message, err.code || 'VALIDATION');
+    }
+  }
+
+  /* POST /api/monthly-1on1/reports/:id/start-review */
+  match = pathname.match(/^\/api\/monthly-1on1\/reports\/([^/]+)\/start-review$/);
+  if (match && method === 'POST') {
+    const auth = await requireAuth(req, res, { csrf: true });
+    if (!auth) return;
+    const reportId = decodeURIComponent(match[1]);
+    const report = await monthly1on1Db.getMonthly1on1ReportById(db, reportId);
+    if (!report || report.record_type === 'window') return sendError(res, 404, 'Report not found.', 'NOT_FOUND');
+
+    if (!monthly1on1Db.canReviewAll1on1Reports(auth.user)) {
+      return sendError(res, 403, 'You do not have permission to review this report.', 'FORBIDDEN');
+    }
+
+    try {
+      const updated = await monthly1on1Db.startMonthly1on1Review(db, {
+        reportId,
+        reviewerId: auth.user.id,
+        reviewerName: auth.user.name,
+        auditUser: auth.user
+      });
+      return sendJson(res, 200, { report: updated });
+    } catch (err) {
+      return sendError(res, err.status || 400, err.message, err.code || 'VALIDATION');
+    }
+  }
+
+  /* PATCH /api/monthly-1on1/reports/:id/notes — save review notes in progress */
+  match = pathname.match(/^\/api\/monthly-1on1\/reports\/([^/]+)\/notes$/);
+  if (match && method === 'PATCH') {
+    const auth = await requireAuth(req, res, { csrf: true });
+    if (!auth) return;
+    const reportId = decodeURIComponent(match[1]);
+    const report = await monthly1on1Db.getMonthly1on1ReportById(db, reportId);
+    if (!report || report.record_type === 'window') return sendError(res, 404, 'Report not found.', 'NOT_FOUND');
+
+    if (!monthly1on1Db.canReviewAll1on1Reports(auth.user)) {
+      return sendError(res, 403, 'You do not have permission to update notes on this report.', 'FORBIDDEN');
+    }
+
+    const body = await readJson(req);
+    const notes = body.manager_notes || body;
+    try {
+      const updated = await monthly1on1Db.saveMonthly1on1ReviewNotes(db, {
+        reportId,
+        managerNotes: {
+          key_observation: cleanText(notes.key_observation, 5000),
+          final_responsibility_assigned: cleanText(notes.final_responsibility_assigned || notes.final_responsibility, 5000),
+          meeting_date: validDate(notes.meeting_date) ? notes.meeting_date : (validDate(notes.deadline) ? notes.deadline : (validDate(notes.follow_up_date) ? notes.follow_up_date : null)),
+          follow_up_date: validDate(notes.meeting_date) ? notes.meeting_date : (validDate(notes.deadline) ? notes.deadline : (validDate(notes.follow_up_date) ? notes.follow_up_date : null)),
+          deadline: validDate(notes.meeting_date) ? notes.meeting_date : (validDate(notes.deadline) ? notes.deadline : (validDate(notes.follow_up_date) ? notes.follow_up_date : null)),
+          additional_comments: cleanText(notes.additional_comments, 5000)
+        },
+        reviewerId: auth.user.id,
+        auditUser: auth.user
+      });
+      return sendJson(res, 200, { report: updated });
+    } catch (err) {
+      return sendError(res, err.status || 400, err.message, err.code || 'VALIDATION');
+    }
+  }
+
+  /* POST /api/monthly-1on1/reports/:id/request-revision */
+  match = pathname.match(/^\/api\/monthly-1on1\/reports\/([^/]+)\/request-revision$/);
+  if (match && method === 'POST') {
+    const auth = await requireAuth(req, res, { csrf: true });
+    if (!auth) return;
+    const reportId = decodeURIComponent(match[1]);
+    const report = await monthly1on1Db.getMonthly1on1ReportById(db, reportId);
+    if (!report || report.record_type === 'window') return sendError(res, 404, 'Report not found.', 'NOT_FOUND');
+
+    if (!monthly1on1Db.canReviewAll1on1Reports(auth.user)) {
+      return sendError(res, 403, 'You do not have permission to request revision for this report.', 'FORBIDDEN');
+    }
+
+    const body = await readJson(req);
+    try {
+      const updated = await monthly1on1Db.requestMonthly1on1Revision(db, {
+        reportId,
+        reason: cleanText(body.reason, 2000, true),
+        auditUser: auth.user
+      });
+      return sendJson(res, 200, { report: updated });
+    } catch (err) {
+      return sendError(res, err.status || 400, err.message, err.code || 'VALIDATION');
+    }
+  }
+
+  /* POST /api/monthly-1on1/reports/:id/finalize */
+  match = pathname.match(/^\/api\/monthly-1on1\/reports\/([^/]+)\/finalize$/);
+  if (match && method === 'POST') {
+    const auth = await requireAuth(req, res, { csrf: true });
+    if (!auth) return;
+    const reportId = decodeURIComponent(match[1]);
+    const report = await monthly1on1Db.getMonthly1on1ReportById(db, reportId);
+    if (!report || report.record_type === 'window') return sendError(res, 404, 'Report not found.', 'NOT_FOUND');
+
+    if (!monthly1on1Db.canReviewAll1on1Reports(auth.user)) {
+      return sendError(res, 403, 'You do not have permission to finalize this report.', 'FORBIDDEN');
+    }
+
+    const body = await readJson(req);
+    const notes = body.manager_notes || body;
+    try {
+      const updated = await monthly1on1Db.finalizeMonthly1on1Report(db, {
+        reportId,
+        managerNotes: {
+          key_observation: cleanText(notes.key_observation, 5000),
+          final_responsibility_assigned: cleanText(notes.final_responsibility_assigned || notes.final_responsibility, 5000),
+          meeting_date: validDate(notes.meeting_date) ? notes.meeting_date : (validDate(notes.deadline) ? notes.deadline : (validDate(notes.follow_up_date) ? notes.follow_up_date : null)),
+          follow_up_date: validDate(notes.meeting_date) ? notes.meeting_date : (validDate(notes.deadline) ? notes.deadline : (validDate(notes.follow_up_date) ? notes.follow_up_date : null)),
+          deadline: validDate(notes.meeting_date) ? notes.meeting_date : (validDate(notes.deadline) ? notes.deadline : (validDate(notes.follow_up_date) ? notes.follow_up_date : null)),
+          additional_comments: cleanText(notes.additional_comments, 5000)
+        },
+        reviewerAcknowledged: Boolean(body.reviewer_acknowledged),
+        reviewerId: auth.user.id,
+        reviewerName: auth.user.name,
+        auditUser: auth.user
+      });
+      return sendJson(res, 200, { report: updated });
+    } catch (err) {
+      return sendError(res, err.status || 400, err.message, err.code || 'VALIDATION');
+    }
+  }
+
+  /* POST /api/monthly-1on1/reports/:id/reopen */
+  match = pathname.match(/^\/api\/monthly-1on1\/reports\/([^/]+)\/reopen$/);
+  if (match && method === 'POST') {
+    const auth = await requireAuth(req, res, { csrf: true });
+    if (!auth) return;
+    const reportId = decodeURIComponent(match[1]);
+    const report = await monthly1on1Db.getMonthly1on1ReportById(db, reportId);
+    if (!report || report.record_type === 'window') return sendError(res, 404, 'Report not found.', 'NOT_FOUND');
+
+    if (!monthly1on1Db.canReviewAll1on1Reports(auth.user)) {
+      return sendError(res, 403, 'You do not have permission to reopen this report.', 'FORBIDDEN');
+    }
+
+    const body = await readJson(req);
+    try {
+      const updated = await monthly1on1Db.reopenMonthly1on1Report(db, {
+        reportId,
+        reason: cleanText(body.reason, 2000, true),
+        auditUser: auth.user
+      });
+      return sendJson(res, 200, { report: updated });
+    } catch (err) {
+      return sendError(res, err.status || 400, err.message, err.code || 'VALIDATION');
+    }
+  }
+
+  /* GET /api/monthly-1on1/team-reports — Admin view: Only Super Admin and Service Admin */
+  if (method === 'GET' && pathname === '/api/monthly-1on1/team-reports') {
+    const auth = await requireAuth(req, res);
+    if (!auth) return;
+    if (!monthly1on1Db.canReviewAll1on1Reports(auth.user)) {
+      return sendError(res, 403, 'Access denied. Only Super Admin and Service Admin are authorized to access the Administrative Dashboard.', 'FORBIDDEN');
+    }
+
+
+
+    const year = Number(url.searchParams.get('year') || new Date().getFullYear());
+    const month = Number(url.searchParams.get('month') || 0);
+    const status = url.searchParams.get('status') || '';
+    const q = (url.searchParams.get('q') || '').trim();
+    const department = (url.searchParams.get('department') || '').trim();
+    const page = Math.max(1, Number(url.searchParams.get('page') || 1));
+    const limit = 20;
+    const offset = (page - 1) * limit;
+
+    // Draft reports must remain private to respective employees only
+    let baseScope = `WHERE record_type='report' AND employee_id > 0 AND status != 'Draft'`;
+    const baseParams = [];
+    if (year) { baseScope += ' AND YEAR(reporting_month)=?'; baseParams.push(year); }
+    if (month) { baseScope += ' AND MONTH(reporting_month)=?'; baseParams.push(month); }
+    if (department) { baseScope += ' AND department=?'; baseParams.push(department); }
+
+    // Summary calculation for all eligible employees
+    const statsRow = await db.get(
+      `SELECT
+         COUNT(DISTINCT employee_id) AS distinct_employees,
+         COUNT(CASE WHEN status='Submitted' THEN 1 END) AS submitted,
+         COUNT(CASE WHEN status='Draft' THEN 1 END) AS draft,
+         COUNT(CASE WHEN status='Under Review' THEN 1 END) AS under_review,
+         COUNT(CASE WHEN status='Completed' THEN 1 END) AS completed,
+         COUNT(CASE WHEN status='Approved' THEN 1 END) AS approved,
+         COUNT(CASE WHEN status='Rejected' THEN 1 END) AS rejected,
+         COUNT(CASE WHEN status='Revision Requested' THEN 1 END) AS revision_requested
+       FROM monthly_1on1_reports ${baseScope}`,
+      baseParams
+    );
+
+    // Headcount metric: Total Employees of Mypreneur (all active employees)
+    // Pending denominator: Expected applicants (active employees excluding Super Admin)
+    let totalEmployeesOfMypreneur = 0;
+    let totalExpectedApplicants = 0;
+    try {
+      const allEmps = await getEmployeesList(db);
+      totalEmployeesOfMypreneur = allEmps.length;
+      totalExpectedApplicants = allEmps.filter(e => !['admin'].includes(e.role) && !monthly1on1Db.isSuperAdmin(e)).length;
+      if (totalExpectedApplicants === 0) totalExpectedApplicants = totalEmployeesOfMypreneur;
+    } catch {
+      totalEmployeesOfMypreneur = Math.max(Number(statsRow?.distinct_employees || 0), 1);
+      totalExpectedApplicants = totalEmployeesOfMypreneur;
+    }
+
+    const approvedCount = Number(statsRow?.approved || 0);
+    const rejectedCount = Number(statsRow?.rejected || 0);
+    const submittedCount = Number(statsRow?.submitted || 0);
+    const completedCount = Number(statsRow?.completed || 0);
+    const underReviewCount = Number(statsRow?.under_review || 0);
+    const revisionCount = Number(statsRow?.revision_requested || 0);
+
+    const totalSubmittedApplications = submittedCount + underReviewCount + completedCount + approvedCount + rejectedCount;
+    const pendingApplications = Math.max(0, totalExpectedApplicants - totalSubmittedApplications);
+    const submissionRate = totalExpectedApplicants > 0 ? Math.min(100, Math.round((totalSubmittedApplications / totalExpectedApplicants) * 100)) : 0;
+
+    const summary = {
+      total_employees_mypreneur: totalEmployeesOfMypreneur,
+      total_eligible_employees: totalEmployeesOfMypreneur, // Compatibility alias
+      total_expected_applicants: totalExpectedApplicants,
+      applications_submitted: totalSubmittedApplications,
+      pending_applications: pendingApplications,
+      approved_applications: approvedCount,
+      rejected_applications: rejectedCount,
+      submission_percentage: submissionRate,
+      under_review: underReviewCount,
+      revision_requested: revisionCount,
+      // Compatibility aliases
+      total_team_members: totalEmployeesOfMypreneur,
+      submitted: totalSubmittedApplications,
+      pending_submission: pendingApplications,
+      completed: approvedCount + completedCount
+    };
+
+    let whereClause = baseScope;
+    const filterParams = [...baseParams];
+    if (status && VALID_1ON1_STATUSES.includes(status)) {
+      whereClause += ' AND status=?';
+      filterParams.push(status);
+    }
+    if (q) {
+      whereClause += ' AND (employee_name LIKE ? OR department LIKE ?)';
+      filterParams.push(`%${q}%`, `%${q}%`);
+    }
+
+    const rows = await db.all(
+      `SELECT id, employee_id, employee_name, department, reviewer_id, reviewer_name, director_name, reporting_month, meeting_date, submitted_at, approved_at, approved_by_name, rejected_at, rejected_by_name, rejection_reason, overall_status, status, updated_at, manager_notes_json
+       FROM monthly_1on1_reports ${whereClause}
+       ORDER BY reporting_month DESC, submitted_at DESC
+       LIMIT ${limit} OFFSET ${offset}`,
+      filterParams
+    );
+    const countRow = await db.get(`SELECT COUNT(*) AS total FROM monthly_1on1_reports ${whereClause}`, filterParams);
+    const reports = (rows || []).map(r => {
+      let notes = null;
+      try {
+        notes = r.manager_notes_json ? (typeof r.manager_notes_json === 'string' ? JSON.parse(r.manager_notes_json) : r.manager_notes_json) : null;
+      } catch (e) {}
+      return {
+        ...r,
+        manager_notes: notes
+      };
+    });
+    return sendJson(res, 200, {
+      reports,
+      total: Number(countRow?.total || 0),
+      page,
+      limit,
+      summary
+    });
+  }
+
+  /* GET /api/monthly-1on1/reviewers — eligible managers/admins for assignment */
+  if (method === 'GET' && pathname === '/api/monthly-1on1/reviewers') {
+    const auth = await requireAuth(req, res);
+    if (!auth) return;
+    if (!monthly1on1Db.canReviewAll1on1Reports(auth.user)) return sendError(res, 403, 'Forbidden.', 'FORBIDDEN');
+
+    const tUsers = authProvider.schema.usersTable;
+    const tEmployees = authProvider.schema.employeesTable;
+
+    const rows = await db.all(
+      `SELECT u.user_id AS id
+       FROM ${tUsers} u
+       LEFT JOIN ${tEmployees} e ON e.employee_id=u.employee_id
+       WHERE u.is_active=1 AND (e.status IS NULL OR UPPER(e.status)='ACTIVE')`
+    );
+
+    const reviewers = [];
+    for (const r of (rows || [])) {
+      try {
+        const u = await authProvider.findById(r.id);
+        if (u && monthly1on1Db.canReviewAll1on1Reports(u)) {
+          reviewers.push({
+            id: u.id,
+            name: u.name,
+            username: u.username,
+            role: u.role,
+            team: u.team
+          });
+        }
+      } catch {}
+    }
+    reviewers.sort((a, b) => a.name.localeCompare(b.name));
+    return sendJson(res, 200, { reviewers });
+  }
+
+  /* POST /api/monthly-1on1/reports/:id/assign-reviewer — assign/reassign manager */
+  match = pathname.match(/^\/api\/monthly-1on1\/reports\/([^/]+)\/assign-reviewer$/);
+  if (match && method === 'POST') {
+    const auth = await requireAuth(req, res, { csrf: true });
+    if (!auth) return;
+    if (!monthly1on1Db.canReviewAll1on1Reports(auth.user)) {
+      return sendError(res, 403, 'Only Super Admin and Service Admin can assign or reassign reporting managers.', 'FORBIDDEN');
+    }
+
+    const reportId = decodeURIComponent(match[1]);
+    const body = await readJson(req);
+    const reviewerId = body.reviewer_id ? Number(body.reviewer_id) : null;
+    let reviewerName = '';
+
+    if (reviewerId) {
+      const userRecord = await authProvider.findById(reviewerId);
+      if (!userRecord) return sendError(res, 404, 'Reviewer user not found.', 'NOT_FOUND');
+      reviewerName = userRecord.name;
+    }
+
+    try {
+      const updated = await monthly1on1Db.assignMonthly1on1Reviewer(db, {
+        reportId,
+        reviewerId,
+        reviewerName,
+        auditUser: auth.user
+      });
+      return sendJson(res, 200, { report: updated });
+    } catch (err) {
+      return sendError(res, err.status || 400, err.message, err.code || 'VALIDATION');
+    }
+  }
+
+  /* GET /api/monthly-1on1/export/:id — printable report */
+  match = pathname.match(/^\/api\/monthly-1on1\/export\/([^/]+)$/);
+  if (match && method === 'GET') {
+    const auth = await requireAuth(req, res);
+    if (!auth) return;
+    const reportId = decodeURIComponent(match[1]);
+    const report = await monthly1on1Db.getMonthly1on1ReportById(db, reportId);
+    if (!report || report.record_type === 'window') return sendError(res, 404, 'Report not found.', 'NOT_FOUND');
+
+    if (!monthly1on1Db.canUserAccessReport(auth.user, report, 'view')) {
+      return sendError(res, 403, 'Access denied.', 'FORBIDDEN');
+    }
+
+    const format = url.searchParams.get('format');
+    const acceptHeader = req.headers['accept'] || '';
+    const wantsHtml = format === 'html' || (acceptHeader.includes('text/html') && !acceptHeader.includes('application/json') && format !== 'json');
+
+    if (wantsHtml) {
+      securityHeaders(res, false);
+      const html = monthly1on1Db.renderMonthly1on1PrintHtml(report);
+      res.writeHead(200, {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        'Pragma': 'no-cache'
+      });
+      res.end(html);
+      return;
+    }
+
+    return sendJson(res, 200, { report });
+  }
 
   return sendError(res, 404, 'API route not found.', 'NOT_FOUND');
 }
+
 
 function staticMime(file) {
   const extension = path.extname(file).toLowerCase();
@@ -1921,6 +3364,13 @@ async function serveStatic(req, res, url) {
   let relative;
   try { relative = decodeURIComponent(url.pathname); } catch { return sendError(res, 400, 'Invalid URL.', 'VALIDATION'); }
   if (relative === '/') relative = '/index.html';
+
+  // Explicitly block all dotfiles and hidden paths (.env, .git, .htaccess, etc.)
+  const segments = relative.split('/');
+  if (segments.some(seg => seg.startsWith('.') && seg !== '.' && seg !== '..')) {
+    return sendError(res, 403, 'Access to hidden resources is forbidden.', 'FORBIDDEN');
+  }
+
   const publicRoot = path.resolve(PUBLIC_DIR);
   const resolved = path.resolve(publicRoot, '.' + relative);
   if (resolved !== path.join(publicRoot, 'index.html') && !resolved.startsWith(publicRoot + path.sep)) {
@@ -1980,12 +3430,20 @@ async function start() {
       const status = Number(error.status) || 500;
       if (status >= 500) console.error(error);
       if (!res.headersSent) {
-        sendError(res, status, status >= 500 ? 'Server error. Please try again.' : error.message, status >= 500 ? 'SERVER_ERROR' : 'VALIDATION');
+        const isDbError = Boolean(error.code && (String(error.code).startsWith('ER_') || error.code === 'PROTOCOL_CONNECTION_LOST'));
+        const safeMessage = (status >= 500 || isDbError)
+          ? 'Server error. Please try again.'
+          : (error.message || 'Validation error.');
+        sendError(res, isDbError ? 500 : status, safeMessage, status >= 500 || isDbError ? 'SERVER_ERROR' : (error.code || 'VALIDATION'));
       } else {
         res.end();
       }
     }
   });
+
+  server.headersTimeout = 65000;
+  server.requestTimeout = 60000;
+  server.keepAliveTimeout = 61000;
 
   await new Promise((resolve, reject) => {
     server.once('error', reject);

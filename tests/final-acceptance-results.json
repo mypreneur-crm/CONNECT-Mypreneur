@@ -1,0 +1,62 @@
+[
+  {
+    "id": "SCENARIO 1",
+    "title": "Automatic Opening without manual intervention",
+    "result": "PASS",
+    "details": ""
+  },
+  {
+    "id": "SCENARIO 2",
+    "title": "Manual Open/Close Controls and Closed-Window Lock",
+    "result": "PASS",
+    "details": ""
+  },
+  {
+    "id": "SCENARIO 3",
+    "title": "Complete 7-Step Employee Application Submission",
+    "result": "PASS",
+    "details": ""
+  },
+  {
+    "id": "SCENARIO 4",
+    "title": "Employee Privacy and Strict Record Isolation",
+    "result": "PASS",
+    "details": ""
+  },
+  {
+    "id": "SCENARIO 5",
+    "title": "Service Admin Roles: Personal Application vs Reviewer Privileges",
+    "result": "PASS",
+    "details": ""
+  },
+  {
+    "id": "SCENARIO 6",
+    "title": "Reviewer Approval with Alignment Notes & Applicant Visibility",
+    "result": "PASS",
+    "details": ""
+  },
+  {
+    "id": "SCENARIO 7",
+    "title": "Rejection, Applicant Correction, Resubmission & Decision History Preservation",
+    "result": "PASS",
+    "details": ""
+  },
+  {
+    "id": "SCENARIO 8",
+    "title": "Automatic Window Closing & Post-Deadline Review Continuity",
+    "result": "PASS",
+    "details": ""
+  },
+  {
+    "id": "SCENARIO 9",
+    "title": "Historical Reports: Private, Accurate, Read-Only Historical Access",
+    "result": "PASS",
+    "details": ""
+  },
+  {
+    "id": "SCENARIO 10",
+    "title": "Full Regression, Core Module Integrity & System Quality",
+    "result": "PASS",
+    "details": ""
+  }
+]
