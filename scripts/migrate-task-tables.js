@@ -96,6 +96,65 @@ async function runMigration() {
     console.warn("Could not backfill creator_user_id:", e.message);
   }
 
+  // Ensure event_id is linked for known event-related tasks
+  try {
+    const academyTaskCodes = [
+      'TSK-2026-0001', 'TSK-2026-0002', 'TSK-2026-0003', 'TSK-2026-0007',
+      'TSK-2026-0009', 'TSK-2026-0010', 'TSK-2026-0027', 'TSK-2026-0028',
+      'TSK-2026-0030', 'TSK-2026-0031', 'TSK-2026-0032', 'TSK-2026-0034',
+      'TSK-2026-0035', 'TSK-2026-0038', 'TSK-2026-0039', 'TSK-2026-0046',
+      'TSK-2026-0077', 'TSK-2026-0085', 'TSK-2026-0086', 'TSK-2026-0094',
+      'TSK-2026-0099'
+    ];
+    const academyEvt = await db.get("SELECT id FROM connect_task_events WHERE event_code = 'ACDYBCH1' OR event_name LIKE '%Academy%' LIMIT 1");
+    if (academyEvt) {
+      const placeholders = academyTaskCodes.map(() => '?').join(',');
+      await db.run(
+        `UPDATE connect_task_tasks SET event_id = ?, source = 'EVENT', task_type = 'EVENT_WORK' WHERE (event_id IS NULL OR event_id = '') AND task_code IN (${placeholders})`,
+        [academyEvt.id, ...academyTaskCodes]
+      );
+      console.log(`✓ Linked ${academyTaskCodes.length} Academy tasks to event workspace ${academyEvt.id}`);
+    }
+
+    // FGC 17 tasks
+    const fgc17Evt = await db.get("SELECT id FROM connect_task_events WHERE event_code = 'FGC17' OR event_name LIKE '%FGC HOSUR%' LIMIT 1");
+    if (fgc17Evt) {
+      const fgc17Codes = ['TSK-2026-0018', 'TSK-2026-0045', 'TSK-2026-0054', 'TSK-2026-0055', 'TSK-2026-0059', 'TSK-2026-0060', 'TSK-2026-0064', 'TSK-2026-0074', 'TSK-2026-0076'];
+      const placeholders = fgc17Codes.map(() => '?').join(',');
+      await db.run(
+        `UPDATE connect_task_tasks SET event_id = ?, source = 'EVENT', task_type = 'EVENT_WORK' WHERE (event_id IS NULL OR event_id = '') AND task_code IN (${placeholders})`,
+        [fgc17Evt.id, ...fgc17Codes]
+      );
+      console.log(`✓ Linked FGC 17 tasks to event workspace ${fgc17Evt.id}`);
+    }
+
+    // FGC 18 tasks
+    const fgc18Evt = await db.get("SELECT id FROM connect_task_events WHERE event_code = 'FGC18' OR event_name LIKE '%Foodpreneur Growth Conclave 18%' LIMIT 1");
+    if (fgc18Evt) {
+      const fgc18Codes = ['TSK-2026-0019', 'TSK-2026-0062', 'TSK-2026-0097'];
+      const placeholders = fgc18Codes.map(() => '?').join(',');
+      await db.run(
+        `UPDATE connect_task_tasks SET event_id = ?, source = 'EVENT', task_type = 'EVENT_WORK' WHERE (event_id IS NULL OR event_id = '') AND task_code IN (${placeholders})`,
+        [fgc18Evt.id, ...fgc18Codes]
+      );
+      console.log(`✓ Linked FGC 18 tasks to event workspace ${fgc18Evt.id}`);
+    }
+
+    // VSL tasks
+    const vslEvt = await db.get("SELECT id FROM connect_task_events WHERE event_code = 'VSL' OR event_name LIKE '%VIDEO SALES LETTER%' LIMIT 1");
+    if (vslEvt) {
+      const vslCodes = ['TSK-2026-0089', 'TSK-2026-0090', 'TSK-2026-0091', 'TSK-2026-0093', 'TSK-2026-0100'];
+      const placeholders = vslCodes.map(() => '?').join(',');
+      await db.run(
+        `UPDATE connect_task_tasks SET event_id = ?, source = 'EVENT', task_type = 'EVENT_WORK' WHERE (event_id IS NULL OR event_id = '') AND task_code IN (${placeholders})`,
+        [vslEvt.id, ...vslCodes]
+      );
+      console.log(`✓ Linked VSL tasks to event workspace ${vslEvt.id}`);
+    }
+  } catch (linkErr) {
+    console.warn("Could not backfill event_ids:", linkErr.message);
+  }
+
   // Ensure connect_employee_messages table exists
   try {
     await db.run(`

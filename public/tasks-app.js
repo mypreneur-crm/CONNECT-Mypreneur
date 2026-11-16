@@ -2944,7 +2944,7 @@
     const myEmpId = (session && (session.employeeId || session.employee_id)) || null;
     const ownerEl = $tm('tf_owner_id');
     const ownerVal = (ownerEl && ownerEl.value) ? parseInt(ownerEl.value, 10) : myEmpId;
-    const eventIdVal = ($tm('tf_event_id')?.value) ? parseInt($tm('tf_event_id').value, 10) : null;
+    const eventIdVal = ($tm('tf_event_id')?.value && $tm('tf_event_id').value.trim() !== '') ? $tm('tf_event_id').value.trim() : null;
 
     const payload = {
       title: $tm('tf_title').value.trim(),
@@ -3117,6 +3117,17 @@
               <div>
                 <span style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600;">Team</span>
                 <div style="font-size:13px;font-weight:700;color:var(--navy);margin-top:6px;">${getTeamNameById(t.team_id)}</div>
+              </div>
+              <div>
+                <span style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600;">Linked Event</span>
+                <select onchange="tmUpdateTaskEvent('${t.id}', this.value)" style="margin-top:2px;font-size:12px;font-weight:700;border:1px solid #CBD5E1;border-radius:6px;padding:4px 6px;width:100%;background:#FFF;color:var(--navy);">
+                  <option value="">— No Event —</option>
+                  ${(tm.events || []).map(ev => `
+                    <option value="${ev.id}" ${(t.event_id && (String(t.event_id) === String(ev.id) || String(t.event_id) === String(ev.crm_event_id))) ? 'selected' : ''}>
+                      [${escHtml(ev.event_code || 'EVT')}] ${escHtml(ev.event_name || '')}
+                    </option>
+                  `).join('')}
+                </select>
               </div>
             </div>
 
@@ -3363,6 +3374,22 @@
       }
     } catch (e) {
       alert(`Could not update due date: ${e.message}`);
+    }
+  };
+
+  window.tmUpdateTaskEvent = async function(taskId, newEventId) {
+    try {
+      await apiRequest(`/api/tasks/${taskId}`, {
+        method: 'PATCH',
+        body: { event_id: newEventId || null }
+      });
+      toast(newEventId ? 'Task linked to event' : 'Event link removed');
+      await tmLoadAll();
+      if (tm.selectedTask && tm.selectedTask.id === taskId) {
+        tmOpenTaskDetails(taskId);
+      }
+    } catch (e) {
+      alert(`Could not update linked event: ${e.message}`);
     }
   };
 
