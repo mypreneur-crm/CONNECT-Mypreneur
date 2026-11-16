@@ -16,6 +16,7 @@
     capacity: null,
     crmWorkload: null,
     teamMembers: [],
+    teams: [],
     teamCapacity: [],
     events: [],
     activeTimers: [],
@@ -241,6 +242,9 @@
   }
 
   function getTeamNameById(id) {
+    if (!id) return 'General';
+    const found = (tm.teams || []).find(t => Number(t.team_id) === Number(id));
+    if (found && found.team_name) return found.team_name;
     const map = {
       1: 'Sales',
       2: 'Accounts & HR',
@@ -250,7 +254,7 @@
       22: 'Service',
       30: 'Tele Caller'
     };
-    return map[id] || 'General';
+    return map[id] || `Team #${id}`;
   }
 
   function isExecutive(m) {
@@ -387,13 +391,14 @@
         tm.assigneeFilter = myEmpId ? String(myEmpId) : 'self';
       }
 
-      // 1. Fetch capacity, crm workload, active timer, stats, members, and events (admin only)
-      const [capRes, crmRes, activeTimerRes, statsRes, membersRes, eventsRes] = await Promise.all([
+      // 1. Fetch capacity, crm workload, active timer, stats, members, teams, and events (admin only)
+      const [capRes, crmRes, activeTimerRes, statsRes, membersRes, teamsRes, eventsRes] = await Promise.all([
         apiRequest('/api/tasks/capacity/my').catch(() => ({ data: null })),
         apiRequest('/api/tasks/crm-workload/my').catch(() => ({ data: null })),
         apiRequest('/api/tasks/timer/active').catch(() => ({ data: null })),
         apiRequest('/api/tasks/overview-stats').catch(() => ({ data: null })),
         apiRequest('/api/tasks/team-members').catch(() => ({ data: [] })),
+        apiRequest('/api/tasks/teams').catch(() => ({ data: [] })),
         admin ? apiRequest('/api/tasks/events').catch(() => ({ data: [] })) : Promise.resolve({ data: [] })
       ]);
 
@@ -403,6 +408,7 @@
       tm.activeTimer = activeTimerRes?.data || (tm.activeTimers[0] || null);
       tm.stats = statsRes.data;
       tm.teamMembers = membersRes.data || [];
+      tm.teams = teamsRes.data || [];
       tm.events = eventsRes.data || [];
 
       // Update timer banner
@@ -902,11 +908,19 @@
 
           <select onchange="tmSetTeamFilter(this.value)" style="padding:7px 12px;border:1px solid var(--border);border-radius:8px;font-weight:500;">
             <option value="all" ${tm.teamFilter === 'all' ? 'selected' : ''}>All Teams</option>
-            <option value="1" ${tm.teamFilter === '1' ? 'selected' : ''}>Sales</option>
-            <option value="2" ${tm.teamFilter === '2' ? 'selected' : ''}>Operations</option>
-            <option value="3" ${tm.teamFilter === '3' ? 'selected' : ''}>Accounts &amp; HR</option>
-            <option value="4" ${tm.teamFilter === '4' ? 'selected' : ''}>Digital</option>
-            <option value="5" ${tm.teamFilter === '5' ? 'selected' : ''}>Support</option>
+            ${(tm.teams && tm.teams.length ? tm.teams : [
+              { team_id: 1, team_name: 'Sales' },
+              { team_id: 30, team_name: 'Tele Caller' },
+              { team_id: 2, team_name: 'Accounts' },
+              { team_id: 3, team_name: 'Operations' },
+              { team_id: 4, team_name: 'Support' },
+              { team_id: 21, team_name: 'Digital Marketing' },
+              { team_id: 22, team_name: 'Service' }
+            ]).map(tmItem => `
+              <option value="${tmItem.team_id}" ${String(tm.teamFilter) === String(tmItem.team_id) ? 'selected' : ''}>
+                ${escHtml(tmItem.team_name)}
+              </option>
+            `).join('')}
           </select>
 
           <select onchange="tmSetPriorityFilter(this.value)" style="padding:7px 12px;border:1px solid var(--border);border-radius:8px;font-weight:500;">
@@ -2347,8 +2361,22 @@
     const anchor = $tm('tmModalAnchor');
     const myEmpId = (session && (session.employeeId || session.employee_id)) || null;
     const admin = isTaskAdmin();
+
+    // Determine default team from logged-in user or defaults
+    const myMember = (tm.teamMembers || []).find(m => Number(m.employee_id) === Number(myEmpId));
+    let myDefaultTeamId = 1;
+    if (myMember) {
+      if (String(myMember.designation || '').toLowerCase().includes('tele caller')) {
+        myDefaultTeamId = 30;
+      } else if (myMember.team_id) {
+        myDefaultTeamId = Number(myMember.team_id);
+      }
+    } else if (session?.team_id) {
+      myDefaultTeamId = Number(session.team_id);
+    }
+
+    const targetTeamId = defaults.team_id != null ? Number(defaults.team_id) : myDefaultTeamId;
     const targetOwnerId = defaults.owner_employee_id != null ? Number(defaults.owner_employee_id) : myEmpId;
-    const targetTeamId = defaults.team_id != null ? Number(defaults.team_id) : 2;
     const targetEstMins = defaults.est_minutes != null ? Number(defaults.est_minutes) : 60;
 
     anchor.innerHTML = `
@@ -2381,26 +2409,26 @@
             <div>
               <label style="display:block;font-size:12.5px;font-weight:700;color:var(--navy);margin-bottom:4px;">Target Team *</label>
               <select id="tf_team_id" required onchange="tmUpdateAssigneeOptionsForTeam(this.value)" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:10px;">
-                <option value="1" ${targetTeamId === 1 ? 'selected' : ''}>Sales Team</option>
-                <option value="30" ${targetTeamId === 30 ? 'selected' : ''}>Tele Caller Team</option>
-                <option value="2" ${targetTeamId === 2 ? 'selected' : ''}>Accounts &amp; HR Team</option>
-                <option value="3" ${targetTeamId === 3 ? 'selected' : ''}>Operations Team</option>
-                <option value="4" ${targetTeamId === 4 ? 'selected' : ''}>Support Team</option>
-                <option value="21" ${targetTeamId === 21 ? 'selected' : ''}>Digital Marketing Team</option>
-                <option value="22" ${targetTeamId === 22 ? 'selected' : ''}>Service Team</option>
+                ${(tm.teams && tm.teams.length ? tm.teams : [
+                  { team_id: 1, team_name: 'Sales' },
+                  { team_id: 30, team_name: 'Tele Caller' },
+                  { team_id: 2, team_name: 'Accounts' },
+                  { team_id: 3, team_name: 'Operations' },
+                  { team_id: 4, team_name: 'Support' },
+                  { team_id: 21, team_name: 'Digital Marketing' },
+                  { team_id: 22, team_name: 'Service' }
+                ]).map(tmItem => `
+                  <option value="${tmItem.team_id}" ${Number(targetTeamId) === Number(tmItem.team_id) ? 'selected' : ''}>
+                    ${escHtml(tmItem.team_name)} Team
+                  </option>
+                `).join('')}
               </select>
             </div>
             <div>
               <label style="display:block;font-size:12.5px;font-weight:700;color:var(--navy);margin-bottom:4px;">Assignee</label>
-              ${admin ? `
               <select id="tf_owner_id" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:10px;">
                 <option value="">— Select Assignee —</option>
               </select>
-              ` : `
-              <select id="tf_owner_id" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:10px;background:#F8FAFC;" disabled>
-                <option value="${myEmpId}" selected>${escHtml(session?.name || 'You')} (Self)</option>
-              </select>
-              `}
             </div>
           </div>
 
@@ -2466,49 +2494,74 @@
     </div>
     `;
 
-    if (admin) {
-      setTimeout(() => {
-        tmUpdateAssigneeOptionsForTeam(targetTeamId, targetOwnerId);
-      }, 0);
-    }
+    setTimeout(() => {
+      tmUpdateAssigneeOptionsForTeam(targetTeamId, targetOwnerId);
+    }, 0);
   };
 
   window.tmUpdateAssigneeOptionsForTeam = function(teamIdVal, selectedOwnerId) {
     const ownerSelect = $tm('tf_owner_id');
-    if (!ownerSelect || ownerSelect.disabled) return;
+    if (!ownerSelect) return;
+    ownerSelect.disabled = false;
 
     const teamId = parseInt(teamIdVal, 10);
+    const myEmpId = (session && (session.employeeId || session.employee_id)) ? Number(session.employeeId || session.employee_id) : null;
     const nonExecMembers = (tm.teamMembers || []).filter(m => !isExecutive(m));
 
-    let filtered = [];
+    let teamMembers = [];
     if (teamId === 30) {
-      filtered = nonExecMembers.filter(m => String(m.designation || '').toLowerCase().includes('tele caller') || m.team_id === 30);
+      teamMembers = nonExecMembers.filter(m => String(m.designation || '').toLowerCase().includes('tele caller') || m.team_id === 30);
     } else if (teamId === 1) {
-      filtered = nonExecMembers.filter(m => (m.team_id === 1 || String(m.department || '').toLowerCase().includes('sales')) && !String(m.designation || '').toLowerCase().includes('tele caller'));
+      teamMembers = nonExecMembers.filter(m => (m.team_id === 1 || String(m.department || '').toLowerCase().includes('sales')) && !String(m.designation || '').toLowerCase().includes('tele caller'));
     } else if (teamId === 2) {
-      filtered = nonExecMembers.filter(m => m.team_id === 2 || /account|hr/i.test(m.department || '') || /account|hr/i.test(m.designation || ''));
+      teamMembers = nonExecMembers.filter(m => m.team_id === 2 || /account|hr/i.test(m.department || '') || /account|hr/i.test(m.designation || ''));
     } else if (teamId === 3) {
-      filtered = nonExecMembers.filter(m => m.team_id === 3 || /operation/i.test(m.department || '') || /operation/i.test(m.designation || ''));
+      teamMembers = nonExecMembers.filter(m => m.team_id === 3 || /operation/i.test(m.department || '') || /operation/i.test(m.designation || ''));
     } else if (teamId === 4) {
-      filtered = nonExecMembers.filter(m => m.team_id === 4 || /support/i.test(m.department || '') || /support/i.test(m.designation || ''));
+      teamMembers = nonExecMembers.filter(m => m.team_id === 4 || /support/i.test(m.department || '') || /support/i.test(m.designation || ''));
     } else if (teamId === 21) {
-      filtered = nonExecMembers.filter(m => m.team_id === 21 || /digital/i.test(m.department || '') || /digital/i.test(m.designation || ''));
+      teamMembers = nonExecMembers.filter(m => m.team_id === 21 || /digital/i.test(m.department || '') || /digital/i.test(m.designation || ''));
     } else if (teamId === 22) {
-      filtered = nonExecMembers.filter(m => m.team_id === 22 || /service/i.test(m.department || '') || /service/i.test(m.designation || ''));
+      teamMembers = nonExecMembers.filter(m => m.team_id === 22 || /service/i.test(m.department || '') || /service/i.test(m.designation || ''));
     } else {
-      filtered = nonExecMembers.filter(m => m.team_id === teamId);
+      teamMembers = nonExecMembers.filter(m => m.team_id === teamId);
     }
 
-    if (filtered.length === 0) {
-      filtered = nonExecMembers;
+    const otherMembers = nonExecMembers.filter(m => !teamMembers.some(tmItem => Number(tmItem.employee_id) === Number(m.employee_id)));
+    const currentVal = selectedOwnerId != null ? Number(selectedOwnerId) : (ownerSelect.value ? Number(ownerSelect.value) : myEmpId);
+
+    let html = '';
+    // Option to assign to self if logged-in user is known
+    if (myEmpId) {
+      const myMem = (tm.teamMembers || []).find(m => Number(m.employee_id) === myEmpId);
+      const myLabel = myMem ? `${myMem.name} (Self)` : 'Assign to Myself';
+      html += `<option value="${myEmpId}" ${currentVal === myEmpId ? 'selected' : ''}>👤 ${escHtml(myLabel)}</option>`;
+    } else {
+      html += `<option value="">— Select Assignee —</option>`;
     }
 
-    const currentVal = selectedOwnerId != null ? Number(selectedOwnerId) : (ownerSelect.value ? Number(ownerSelect.value) : null);
-    ownerSelect.innerHTML = `
-      <option value="">— Select Assignee (${filtered.length} available) —</option>
-      ${filtered.map(m => `
-        <option value="${m.employee_id}" ${currentVal === Number(m.employee_id) ? 'selected' : ''}>
-          ${escHtml(m.name)} (${escHtml(m.designation || m.department || 'Staff')})
+    if (teamMembers.length > 0) {
+      html += `<optgroup label="Team Members (${teamMembers.length})">`;
+      for (const m of teamMembers) {
+        if (myEmpId && Number(m.employee_id) === myEmpId) continue;
+        const isSel = currentVal === Number(m.employee_id) ? 'selected' : '';
+        html += `<option value="${m.employee_id}" ${isSel}>${escHtml(m.name)} (${escHtml(m.designation || m.department || 'Staff')})</option>`;
+      }
+      html += `</optgroup>`;
+    }
+
+    if (otherMembers.length > 0) {
+      html += `<optgroup label="Other Active Staff (Cross-team)">`;
+      for (const m of otherMembers) {
+        if (myEmpId && Number(m.employee_id) === myEmpId) continue;
+        const isSel = currentVal === Number(m.employee_id) ? 'selected' : '';
+        html += `<option value="${m.employee_id}" ${isSel}>${escHtml(m.name)} (${escHtml(m.designation || m.department || 'Staff')})</option>`;
+      }
+      html += `</optgroup>`;
+    }
+
+    ownerSelect.innerHTML = html;
+  };
         </option>
       `).join('')}
     `;
