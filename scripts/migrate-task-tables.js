@@ -82,10 +82,16 @@ async function runMigration() {
     console.warn("Could not modify event_date:", e.message);
   }
 
-  // Ensure existing tasks with NULL creator_user_id have default creator (Admin, employee_id 1)
+  // Ensure tasks with NULL creator_user_id are restored from audit log, or fallback to Admin (1)
   try {
+    await db.run(`
+      UPDATE connect_task_tasks t
+      JOIN connect_task_audit_log a ON t.id = a.task_id AND a.action = 'TASK_CREATED'
+      SET t.creator_user_id = a.actor_employee_id
+      WHERE t.creator_user_id IS NULL AND a.actor_employee_id IS NOT NULL
+    `);
     await db.run("UPDATE connect_task_tasks SET creator_user_id = 1 WHERE creator_user_id IS NULL");
-    console.log("✓ Backfilled NULL creator_user_id with 1 on connect_task_tasks");
+    console.log("✓ Ensured accurate creator_user_id on connect_task_tasks");
   } catch (e) {
     console.warn("Could not backfill creator_user_id:", e.message);
   }
