@@ -2518,7 +2518,7 @@
 
           <div class="dup-actions-bar" style="margin:8px -24px -24px -24px;">
             <button type="button" class="btn btn-secondary" onclick="tmCloseModal('tmFormModal')">Cancel</button>
-            <button type="submit" class="btn btn-primary" style="background:var(--cyan);color:#0F0147;font-weight:700;">
+            <button type="submit" id="tmTaskSubmitBtn" class="btn btn-primary" style="background:var(--cyan);color:#0F0147;font-weight:700;">
               Save &amp; Allocate Task
             </button>
           </div>
@@ -2596,8 +2596,28 @@
     ownerSelect.innerHTML = html;
   };
 
+  let isTaskFormSubmitting = false;
+
   window.tmHandleTaskFormSubmit = async function(e) {
     e.preventDefault();
+    if (isTaskFormSubmitting) return;
+
+    const submitBtn = $tm('tmTaskSubmitBtn') || (e.target ? e.target.querySelector('button[type="submit"]') : null);
+    const originalBtnHtml = submitBtn ? submitBtn.innerHTML : 'Save &amp; Allocate Task';
+
+    isTaskFormSubmitting = true;
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.style.opacity = '0.7';
+      submitBtn.style.cursor = 'not-allowed';
+      submitBtn.innerHTML = `
+        <span style="display:inline-flex;align-items:center;gap:8px;">
+          <span style="display:inline-block;width:14px;height:14px;border:2px solid #0F0147;border-top-color:transparent;border-radius:50%;animation:tmSpin 0.7s linear infinite;"></span>
+          Allocating Task...
+        </span>
+      `;
+    }
+
     const myEmpId = (session && (session.employeeId || session.employee_id)) || null;
     const ownerEl = $tm('tf_owner_id');
     const ownerVal = (ownerEl && ownerEl.value) ? parseInt(ownerEl.value, 10) : myEmpId;
@@ -2634,6 +2654,14 @@
       await tmLoadAll();
     } catch (err) {
       alert(`Could not create task: ${err.message}`);
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.style.opacity = '1';
+        submitBtn.style.cursor = 'pointer';
+        submitBtn.innerHTML = originalBtnHtml;
+      }
+    } finally {
+      isTaskFormSubmitting = false;
     }
   };
 
