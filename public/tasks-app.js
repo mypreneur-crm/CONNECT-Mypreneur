@@ -2595,10 +2595,6 @@
 
     ownerSelect.innerHTML = html;
   };
-        </option>
-      `).join('')}
-    `;
-  };
 
   window.tmHandleTaskFormSubmit = async function(e) {
     e.preventDefault();
