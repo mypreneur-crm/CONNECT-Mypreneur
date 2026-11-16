@@ -2267,17 +2267,21 @@ const M1ON1_STEPS = [
 function isSuperAdmin(u) {
   if (!u) return false;
   if (u.isSuperAdmin) return true;
-  if (u.role === 'admin' && Number(u.id) === 5) return true;
-  if (Array.isArray(u.sourceRoles) && u.sourceRoles.includes('ADMIN') && Number(u.id) === 5) return true;
-  return false;
+  if (Array.isArray(u.sourceRoles) && u.sourceRoles.some(r => {
+    const s = String(r || '').toLowerCase().trim();
+    return s === 'admin' || s === 'super admin' || s === 'super_admin' || s === 'superadmin';
+  })) return true;
+  return u.role === 'admin' || u.role === 'super_admin';
 }
 
 function isServiceAdmin(u) {
   if (!u) return false;
   if (u.isServiceAdmin) return true;
-  if (Array.isArray(u.sourceRoles) && u.sourceRoles.includes('SERVICE ADMIN')) return true;
-  if (u.username === 'kaviya' || u.role === 'hr_admin') return true;
-  return false;
+  if (Array.isArray(u.sourceRoles) && u.sourceRoles.some(r => {
+    const s = String(r || '').toLowerCase().trim();
+    return s === 'service admin' || s === 'service_admin' || s === 'hr admin' || s === 'hr_admin';
+  })) return true;
+  return u.role === 'service_admin' || u.role === 'hr_admin';
 }
 
 function isExecutiveLeadership(u) {
