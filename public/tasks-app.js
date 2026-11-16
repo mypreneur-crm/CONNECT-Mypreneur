@@ -434,7 +434,14 @@
 
   async function tmFetchTasks() {
     const res = await apiRequest('/api/tasks');
-    tm.tasks = res.data || [];
+    const raw = res.data || [];
+    const seen = new Set();
+    tm.tasks = raw.filter(t => {
+      if (!t || !t.id) return false;
+      if (seen.has(t.id)) return false;
+      seen.add(t.id);
+      return true;
+    });
     const myEmpId = (session && (session.employeeId || session.employee_id)) || null;
     tm.myTasks = tm.tasks.filter(t => t.owner_employee_id === myEmpId);
   }
