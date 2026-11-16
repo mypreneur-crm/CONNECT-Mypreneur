@@ -31,6 +31,11 @@
     assigneeFilter: 'all',
     assignedByFilter: 'all',
     dueDateFilter: 'all',
+    myWorkStatusFilter: 'active',
+    myWorkPriorityFilter: 'all',
+    myWorkSearch: '',
+    myWorkSortColumn: 'operational',
+    myWorkSortDirection: 'asc',
     filteredEmployeeCapacity: null,
     filteredEmployeeCrmWorkload: null,
     adminSelectedEmployeeId: 'self',
@@ -569,6 +574,125 @@
     const overdueTasks = targetTasks.filter(t => t.is_overdue && t.status !== 'COMPLETED');
     const inProgressTasks = targetTasks.filter(t => t.status === 'IN_PROGRESS');
     const openTasks = targetTasks.filter(t => t.status === 'OPEN' || t.status === 'READY');
+    const completedTasks = targetTasks.filter(t => t.status === 'COMPLETED');
+
+    const statusFilter = tm.myWorkStatusFilter || 'active';
+    const priorityFilter = tm.myWorkPriorityFilter || 'all';
+    const searchQuery = (tm.myWorkSearch || '').trim().toLowerCase();
+    const sortCol = tm.myWorkSortColumn || 'operational';
+    const sortDir = tm.myWorkSortDirection || 'asc';
+    const dirMultiplier = sortDir === 'desc' ? -1 : 1;
+
+    let filteredTasks = targetTasks.filter(t => {
+      // Status filter
+      if (statusFilter === 'active') {
+        if (t.status === 'COMPLETED' || t.status === 'CANCELLED') return false;
+      } else if (statusFilter === 'OPEN') {
+        if (t.status !== 'OPEN' && t.status !== 'READY') return false;
+      } else if (statusFilter === 'IN_PROGRESS') {
+        if (t.status !== 'IN_PROGRESS') return false;
+      } else if (statusFilter === 'COMPLETED') {
+        if (t.status !== 'COMPLETED') return false;
+      } else if (statusFilter === 'OVERDUE') {
+        if (!t.is_overdue || t.status === 'COMPLETED') return false;
+      }
+
+      // Priority filter
+      if (priorityFilter !== 'all' && t.priority !== priorityFilter) {
+        return false;
+      }
+
+      // Search filter
+      if (searchQuery) {
+        const code = (t.task_code || '').toLowerCase();
+        const title = (t.title || '').toLowerCase();
+        const prevOwner = (t.previous_owner_name || '').toLowerCase();
+        if (!code.includes(searchQuery) && !title.includes(searchQuery) && !prevOwner.includes(searchQuery)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+
+    const priorityWeight = { 'CRITICAL': 4, 'HIGH': 3, 'NORMAL': 2, 'LOW': 1 };
+
+    filteredTasks.sort((a, b) => {
+      if (sortCol === 'operational') {
+        // 1. Completed tasks sink to the bottom
+        const isCompA = a.status === 'COMPLETED' ? 1 : 0;
+        const isCompB = b.status === 'COMPLETED' ? 1 : 0;
+        if (isCompA !== isCompB) return isCompA - isCompB;
+
+        // 2. Overdue tasks float to top
+        const isOverdueA = (a.is_overdue && a.status !== 'COMPLETED') ? 1 : 0;
+        const isOverdueB = (b.is_overdue && b.status !== 'COMPLETED') ? 1 : 0;
+        if (isOverdueA !== isOverdueB) return isOverdueB - isOverdueA;
+
+        // 3. In Progress tasks next
+        const isInProgA = a.status === 'IN_PROGRESS' ? 1 : 0;
+        const isInProgB = b.status === 'IN_PROGRESS' ? 1 : 0;
+        if (isInProgA !== isInProgB) return isInProgB - isInProgA;
+
+        // 4. Due Date ASC (earlier deadlines first)
+        if (a.due_date && b.due_date) {
+          const diff = new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
+          if (diff !== 0) return diff;
+        } else if (a.due_date && !b.due_date) {
+          return -1;
+        } else if (!a.due_date && b.due_date) {
+          return 1;
+        }
+
+        // 5. Priority Weight DESC
+        const pA = priorityWeight[a.priority] || 0;
+        const pB = priorityWeight[b.priority] || 0;
+        if (pA !== pB) return pB - pA;
+
+        // 6. Fallback created_at DESC
+        return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+      }
+
+      if (sortCol === 'task_code') {
+        return (a.task_code || '').localeCompare(b.task_code || '') * dirMultiplier;
+      }
+      if (sortCol === 'title') {
+        return (a.title || '').localeCompare(b.title || '') * dirMultiplier;
+      }
+      if (sortCol === 'priority') {
+        const pA = priorityWeight[a.priority] || 0;
+        const pB = priorityWeight[b.priority] || 0;
+        return (pA - pB) * dirMultiplier;
+      }
+      if (sortCol === 'status') {
+        return (a.status || '').localeCompare(b.status || '') * dirMultiplier;
+      }
+      if (sortCol === 'due_date') {
+        const timeA = a.due_date ? new Date(a.due_date).getTime() : (dirMultiplier > 0 ? 9999999999999 : 0);
+        const timeB = b.due_date ? new Date(b.due_date).getTime() : (dirMultiplier > 0 ? 9999999999999 : 0);
+        return (timeA - timeB) * dirMultiplier;
+      }
+      if (sortCol === 'actual_minutes') {
+        return ((a.actual_minutes || 0) - (b.actual_minutes || 0)) * dirMultiplier;
+      }
+
+      return 0;
+    });
+
+    const hasActiveFilters = (statusFilter !== 'active' || priorityFilter !== 'all' || searchQuery !== '' || sortCol !== 'operational');
+
+    function renderSortHeader(label, colKey, widthStyle) {
+      const isCurrent = (tm.myWorkSortColumn === colKey);
+      const indicator = isCurrent
+        ? (tm.myWorkSortDirection === 'asc' ? '▲' : '▼')
+        : '↕';
+      return `
+        <th class="sortable" onclick="tmSortMyWorkBy('${colKey}')" ${widthStyle ? `style="${widthStyle}"` : ''} title="Click to sort by ${label}">
+          ${label}
+          <span class="tm-sort-indicator ${isCurrent ? 'active' : ''}">${indicator}</span>
+        </th>
+      `;
+    }
 
     const loggedInStaffName = (typeof session !== 'undefined' && session && session.name) ? session.name : 'Current User';
     const loggedInStaffDept = (typeof session !== 'undefined' && session && (session.title || session.team)) ? (session.title || session.team) : 'Staff';
@@ -691,15 +815,55 @@
       <!-- CRM Regular Workload Section -->
       ${renderCrmWorkloadSection(crm)}
 
-      <!-- Active & Open Tasks List -->
+      <!-- Tasks Data Table Section -->
       <div class="card" style="padding:22px;background:#FFF;border-radius:16px;border:1px solid var(--border);">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
-          <h3 style="font-size:16px;font-weight:700;color:var(--navy);display:flex;align-items:center;gap:8px;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;color:var(--cyan);"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-            ${viewedMember ? escHtml(viewedMember.name) + "'s Tasks" : "My Assigned Tasks"} (${targetTasks.length})
-          </h3>
-          <div style="font-size:13px;color:var(--muted);">
-            In Progress: <strong>${inProgressTasks.length}</strong> · Open: <strong>${openTasks.length}</strong>
+        <div class="tm-table-toolbar">
+          <div>
+            <h3 style="font-size:16px;font-weight:700;color:var(--navy);display:flex;align-items:center;gap:8px;margin:0;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;color:var(--cyan);"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              ${viewedMember ? escHtml(viewedMember.name) + "'s Tasks" : "My Assigned Tasks"}
+              <span style="font-size:13px;font-weight:600;color:var(--muted);">(${filteredTasks.length}${filteredTasks.length !== targetTasks.length ? ` shown of ${targetTasks.length}` : ''})</span>
+            </h3>
+            <div style="font-size:12.5px;color:var(--muted);margin-top:3px;">
+              In Progress: <strong style="color:#D97706;">${inProgressTasks.length}</strong> · Open: <strong style="color:#0284C7;">${openTasks.length}</strong> · Completed: <strong style="color:#059669;">${completedTasks.length}</strong>${overdueTasks.length > 0 ? ` · Overdue: <strong style="color:#DC2626;">${overdueTasks.length}</strong>` : ''}
+            </div>
+          </div>
+
+          <div class="tm-table-controls">
+            <!-- Search Input -->
+            <input
+              type="text"
+              id="tmMyWorkSearchInput"
+              class="tm-table-search"
+              placeholder="🔍 Search code, title..."
+              value="${escHtml(tm.myWorkSearch || '')}"
+              oninput="tmSetMyWorkSearch(this.value)"
+            />
+
+            <!-- Status Filter Dropdown -->
+            <select class="tm-table-select" onchange="tmSetMyWorkStatusFilter(this.value)" title="Filter tasks by status">
+              <option value="active" ${statusFilter === 'active' ? 'selected' : ''}>🎯 Active (Open &amp; In Progress)</option>
+              <option value="all" ${statusFilter === 'all' ? 'selected' : ''}>📋 All Tasks (${targetTasks.length})</option>
+              <option value="IN_PROGRESS" ${statusFilter === 'IN_PROGRESS' ? 'selected' : ''}>⚡ In Progress (${inProgressTasks.length})</option>
+              <option value="OPEN" ${statusFilter === 'OPEN' ? 'selected' : ''}>📂 Open / Ready (${openTasks.length})</option>
+              <option value="OVERDUE" ${statusFilter === 'OVERDUE' ? 'selected' : ''}>🚨 Overdue (${overdueTasks.length})</option>
+              <option value="COMPLETED" ${statusFilter === 'COMPLETED' ? 'selected' : ''}>✅ Completed (${completedTasks.length})</option>
+            </select>
+
+            <!-- Priority Filter Dropdown -->
+            <select class="tm-table-select" onchange="tmSetMyWorkPriorityFilter(this.value)" title="Filter tasks by priority">
+              <option value="all" ${priorityFilter === 'all' ? 'selected' : ''}>All Priorities</option>
+              <option value="CRITICAL" ${priorityFilter === 'CRITICAL' ? 'selected' : ''}>🔥 Critical</option>
+              <option value="HIGH" ${priorityFilter === 'HIGH' ? 'selected' : ''}>⚡ High</option>
+              <option value="NORMAL" ${priorityFilter === 'NORMAL' ? 'selected' : ''}>🔹 Normal</option>
+              <option value="LOW" ${priorityFilter === 'LOW' ? 'selected' : ''}>☕ Low</option>
+            </select>
+
+            ${hasActiveFilters ? `
+              <button class="btn btn-sm" onclick="tmResetMyWorkFilters()" style="background:#F1F5F9;color:#475569;border-radius:8px;font-size:12px;font-weight:600;padding:7px 11px;" title="Reset filters to default active view">
+                🔄 Reset
+              </button>
+            ` : ''}
           </div>
         </div>
 
@@ -709,9 +873,115 @@
             <p style="font-weight:600;font-size:14.5px;">No tasks currently assigned.</p>
             <p style="font-size:13px;">Create a new task or check the CRM regular workload above.</p>
           </div>
+        ` : filteredTasks.length === 0 ? `
+          <div style="text-align:center;padding:40px 20px;color:var(--muted);background:#F8FAFC;border-radius:12px;border:1px dashed var(--border);margin-top:10px;">
+            <div style="font-size:32px;margin-bottom:8px;">🔍</div>
+            <p style="font-weight:700;font-size:14.5px;color:var(--navy);margin:0 0 6px 0;">No tasks found matching your filter criteria</p>
+            <p style="font-size:13px;margin:0 0 16px 0;">Try adjusting your status or priority filter, or clear your search query.</p>
+            <button class="btn btn-sm" onclick="tmResetMyWorkFilters()" style="background:var(--cyan);color:#0F0147;font-weight:700;padding:7px 16px;border-radius:8px;">
+              Reset Filters to Active
+            </button>
+          </div>
         ` : `
-          <div style="display:flex;flex-direction:column;gap:10px;">
-            ${targetTasks.map(t => renderTaskListItem(t)).join('')}
+          <div class="tm-table-wrap">
+            <table class="tm-data-table">
+              <thead>
+                <tr>
+                  ${renderSortHeader('Code', 'task_code', 'width:130px;')}
+                  ${renderSortHeader('Task Title &amp; Details', 'title')}
+                  ${renderSortHeader('Priority', 'priority', 'width:110px;')}
+                  ${renderSortHeader('Status', 'status', 'width:135px;')}
+                  ${renderSortHeader('Due Date', 'due_date', 'width:140px;')}
+                  ${renderSortHeader('Logged / Est', 'actual_minutes', 'width:125px;')}
+                  <th style="width:110px;text-align:right;">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${filteredTasks.map(t => {
+                  const dueStatus = getDueStatus(t.due_date, t.status);
+                  const isOverdue = dueStatus.isOverdue;
+                  const isCompleted = (t.status === 'COMPLETED');
+                  const isTimerRunning = isTaskTimerRunning(t.id);
+                  const isApprovalPending = (t.approval_status === 'PENDING');
+                  const rowClass = isOverdue ? 'is-overdue-row' : (isCompleted ? 'is-completed-row' : '');
+
+                  const contributorBadge = (t.contributor_count && t.contributor_count > 1)
+                    ? `<span class="badge-contributor" title="Worked on by ${t.contributor_count} persons">👥 ${t.contributor_count}</span>`
+                    : '';
+                  const handoffBadge = t.previous_owner_name
+                    ? `<span class="badge-handoff" title="Handed off from ${escHtml(t.previous_owner_name)}">🔀 ${escHtml(t.previous_owner_name.split(' ')[0])}</span>`
+                    : '';
+                  const approvalBadge = isApprovalPending
+                    ? `<span style="font-size:11px;background:#FEF3C7;color:#92400E;padding:2px 7px;border-radius:4px;font-weight:700;">Pending Approval</span>`
+                    : '';
+
+                  const statusIcon = isCompleted ? '✓' : (t.status === 'IN_PROGRESS' ? '⚡' : '●');
+                  const statusClass = (t.status || '').toLowerCase().replace('-', '_');
+
+                  return `
+                  <tr class="${rowClass}" onclick="tmOpenTaskDetails('${t.id}')">
+                    <td>
+                      <span class="task-code" style="font-weight:700;">${escHtml(t.task_code)}</span>
+                    </td>
+                    <td>
+                      <div style="display:flex;flex-direction:column;gap:3px;">
+                        <strong style="color:var(--navy);font-size:13.5px;line-height:1.35;">${escHtml(t.title)}</strong>
+                        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                          ${handoffBadge}
+                          ${contributorBadge}
+                          ${approvalBadge}
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <span class="badge-priority ${t.priority.toLowerCase()}">${escHtml(t.priority)}</span>
+                    </td>
+                    <td>
+                      <span class="badge-status ${statusClass}">${statusIcon} ${escHtml((t.status || '').replace('_', ' '))}</span>
+                    </td>
+                    <td>
+                      <div>
+                        <div style="font-weight:600;font-size:12.5px;color:${isOverdue ? '#DC2626' : 'var(--navy)'};">
+                          ${t.due_date ? new Date(t.due_date).toLocaleDateString() : '<span style="color:var(--muted);font-weight:normal;">None</span>'}
+                        </div>
+                        ${dueStatus.badgeHtml ? `<div style="margin-top:2px;">${dueStatus.badgeHtml}</div>` : ''}
+                      </div>
+                    </td>
+                    <td>
+                      <div style="white-space:nowrap;font-size:12.5px;">
+                        <strong style="color:var(--navy);">${formatMins(t.actual_minutes || 0)}</strong>
+                        ${(t.estimated_minutes && t.estimated_minutes > 0) ? `<span style="font-size:11px;color:var(--muted);"> / ${formatMins(t.estimated_minutes)}</span>` : ''}
+                      </div>
+                    </td>
+                    <td onclick="event.stopPropagation()">
+                      <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end;">
+                        ${isApprovalPending ? `
+                          <button class="btn btn-sm" disabled style="opacity:0.5;font-size:11px;padding:4px 8px;" title="Cannot start timer until task is approved">
+                            🔒 Locked
+                          </button>
+                        ` : isTimerRunning ? `
+                          <button class="btn btn-sm" style="background:#EF4444;color:#FFF;border-radius:6px;font-weight:700;font-size:11px;padding:4px 8px;" onclick="tmStopTimer('${t.id}')">
+                            ⏹ Stop
+                          </button>
+                        ` : isCompleted ? `
+                          <button class="btn btn-sm btn-secondary" style="border-radius:6px;font-weight:600;font-size:11px;padding:4px 8px;" onclick="tmOpenTaskDetails('${t.id}')">
+                            👁️ View
+                          </button>
+                        ` : `
+                          <button class="btn btn-sm btn-secondary" style="border-radius:6px;font-weight:600;font-size:11px;padding:4px 8px;" onclick="tmStartTimer('${t.id}')">
+                            ▶ Start
+                          </button>
+                        `}
+                        <button class="btn btn-sm" style="background:#F1F5F9;color:#334155;border-radius:6px;font-size:11px;padding:4px 7px;" title="View Details" onclick="tmOpenTaskDetails('${t.id}')">
+                          👁️
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
           </div>
         `}
       </div>
@@ -1309,11 +1579,64 @@
     tmRenderTab();
   };
 
-  window.tmFilterOverdue = function() {
-    tmSwitchTab('board');
-    tm.dueDateFilter = 'overdue';
-    tm.searchQuery = '';
+  window.tmSetMyWorkStatusFilter = function(val) {
+    tm.myWorkStatusFilter = val || 'active';
     tmRenderTab();
+  };
+
+  window.tmSetMyWorkPriorityFilter = function(val) {
+    tm.myWorkPriorityFilter = val || 'all';
+    tmRenderTab();
+  };
+
+  let myWorkSearchDebounce = null;
+  window.tmSetMyWorkSearch = function(val) {
+    tm.myWorkSearch = val || '';
+    clearTimeout(myWorkSearchDebounce);
+    myWorkSearchDebounce = setTimeout(() => {
+      const searchInput = document.getElementById('tmMyWorkSearchInput');
+      const cursorPos = searchInput ? searchInput.selectionStart : null;
+      tmRenderTab();
+      const updatedInput = document.getElementById('tmMyWorkSearchInput');
+      if (updatedInput) {
+        updatedInput.focus();
+        if (cursorPos !== null) {
+          try { updatedInput.setSelectionRange(cursorPos, cursorPos); } catch (e) {}
+        }
+      }
+    }, 200);
+  };
+
+  window.tmResetMyWorkFilters = function() {
+    tm.myWorkStatusFilter = 'active';
+    tm.myWorkPriorityFilter = 'all';
+    tm.myWorkSearch = '';
+    tm.myWorkSortColumn = 'operational';
+    tm.myWorkSortDirection = 'asc';
+    tmRenderTab();
+  };
+
+  window.tmSortMyWorkBy = function(col) {
+    if (tm.myWorkSortColumn === col) {
+      tm.myWorkSortDirection = tm.myWorkSortDirection === 'asc' ? 'desc' : 'asc';
+    } else {
+      tm.myWorkSortColumn = col;
+      // For priority and logged minutes, default descending on first click
+      tm.myWorkSortDirection = (col === 'priority' || col === 'actual_minutes') ? 'desc' : 'asc';
+    }
+    tmRenderTab();
+  };
+
+  window.tmFilterOverdue = function() {
+    if (tm.currentTab === 'mywork') {
+      tm.myWorkStatusFilter = 'OVERDUE';
+      tmRenderTab();
+    } else {
+      tmSwitchTab('board');
+      tm.dueDateFilter = 'overdue';
+      tm.searchQuery = '';
+      tmRenderTab();
+    }
   };
 
   // =========================================================================
