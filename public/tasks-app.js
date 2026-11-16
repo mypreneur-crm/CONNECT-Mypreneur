@@ -352,7 +352,12 @@
 
       <!-- Tab Content Area -->
       <div id="tmTabContent">
-        <div style="padding:40px;text-align:center;color:var(--muted);">Loading Task Manager...</div>
+        ${(tm.tasks && tm.tasks.length > 0) ? (tm.currentTab === 'board' ? renderBoardTab() : renderMyWorkTab()) : `
+        <div style="padding:48px 20px;text-align:center;color:var(--muted);">
+          <div style="display:inline-block;width:32px;height:32px;border:3px solid #E2E8F0;border-top-color:#0284C7;border-radius:50%;animation:tmSpin 0.7s linear infinite;margin-bottom:12px;"></div>
+          <div style="font-weight:600;font-size:14px;color:var(--navy);">Loading Task Manager...</div>
+          <style>@keyframes tmSpin { to { transform: rotate(360deg); } }</style>
+        </div>`}
       </div>
 
       <!-- Modal Injection Anchors -->
@@ -369,7 +374,7 @@
     startTimerTicker();
   };
 
-  async function tmLoadAll() {
+  async function tmLoadAll(isBackground = false) {
     try {
       const admin = isTaskAdmin();
       const exec = isExecutiveLeader();
@@ -391,25 +396,56 @@
         tm.assigneeFilter = myEmpId ? String(myEmpId) : 'self';
       }
 
-      // 1. Fetch capacity, crm workload, active timer, stats, members, teams, and events (admin only)
-      const [capRes, crmRes, activeTimerRes, statsRes, membersRes, teamsRes, eventsRes] = await Promise.all([
-        apiRequest('/api/tasks/capacity/my').catch(() => ({ data: null })),
-        apiRequest('/api/tasks/crm-workload/my').catch(() => ({ data: null })),
-        apiRequest('/api/tasks/timer/active').catch(() => ({ data: null })),
-        apiRequest('/api/tasks/overview-stats').catch(() => ({ data: null })),
-        apiRequest('/api/tasks/team-members').catch(() => ({ data: [] })),
-        apiRequest('/api/tasks/teams').catch(() => ({ data: [] })),
-        admin ? apiRequest('/api/tasks/events').catch(() => ({ data: [] })) : Promise.resolve({ data: [] })
-      ]);
+      // Instant paint if tasks are already in memory from earlier view in session
+      if (!isBackground && tm.tasks && tm.tasks.length > 0 && $tm('tmTabContent')) {
+        tmRenderTab();
+      }
 
-      tm.capacity = capRes.data;
-      tm.crmWorkload = crmRes.data;
-      tm.activeTimers = activeTimerRes?.timers || (activeTimerRes?.data ? [activeTimerRes.data] : []);
-      tm.activeTimer = activeTimerRes?.data || (tm.activeTimers[0] || null);
-      tm.stats = statsRes.data;
-      tm.teamMembers = membersRes.data || [];
-      tm.teams = teamsRes.data || [];
-      tm.events = eventsRes.data || [];
+      // 1. Single unified high-performance bootstrap call (fetches everything in 1 roundtrip)
+      const initRes = await apiRequest('/api/tasks/init').catch(() => null);
+
+      if (initRes && initRes.data) {
+        const d = initRes.data;
+        const raw = d.tasks || [];
+        const seen = new Set();
+        tm.tasks = raw.filter(t => {
+          if (!t || !t.id) return false;
+          if (seen.has(t.id)) return false;
+          seen.add(t.id);
+          return true;
+        });
+        tm.myTasks = tm.tasks.filter(t => t.owner_employee_id === myEmpId);
+        tm.capacity = d.capacity;
+        tm.crmWorkload = d.crmWorkload || (d.capacity?.crmWorkload) || { items: [], totalEstimatedMinutes: 0, actualLoggedMinutes: 0, teamName: '' };
+        tm.activeTimers = d.activeTimers || [];
+        tm.activeTimer = d.activeTimer || (tm.activeTimers[0] || null);
+        tm.stats = d.stats;
+        tm.teamMembers = d.teamMembers || [];
+        tm.teams = d.teams || [];
+        tm.events = d.events || [];
+      } else {
+        // Fallback to separate endpoints if /api/tasks/init is unavailable
+        const [capRes, crmRes, activeTimerRes, statsRes, membersRes, teamsRes, eventsRes] = await Promise.all([
+          apiRequest('/api/tasks/capacity/my').catch(() => ({ data: null })),
+          apiRequest('/api/tasks/crm-workload/my').catch(() => ({ data: null })),
+          apiRequest('/api/tasks/timer/active').catch(() => ({ data: null })),
+          apiRequest('/api/tasks/overview-stats').catch(() => ({ data: null })),
+          apiRequest('/api/tasks/team-members').catch(() => ({ data: [] })),
+          apiRequest('/api/tasks/teams').catch(() => ({ data: [] })),
+          admin ? apiRequest('/api/tasks/events').catch(() => ({ data: [] })) : Promise.resolve({ data: [] })
+        ]);
+
+        tm.capacity = capRes.data;
+        tm.crmWorkload = crmRes.data;
+        tm.activeTimers = activeTimerRes?.timers || (activeTimerRes?.data ? [activeTimerRes.data] : []);
+        tm.activeTimer = activeTimerRes?.data || (tm.activeTimers[0] || null);
+        tm.stats = statsRes.data;
+        tm.teamMembers = membersRes.data || [];
+        tm.teams = teamsRes.data || [];
+        tm.events = eventsRes.data || [];
+
+        await tmFetchTasks();
+      }
 
       // Update timer banner
       updateTimerBanner();
@@ -423,14 +459,11 @@
         pill.style.display = 'none';
       }
 
-      // 2. Fetch tasks
-      await tmFetchTasks();
-
-      // 3. Render current tab
+      // Render updated tab
       tmRenderTab();
     } catch (e) {
       console.error('Error loading tasks data:', e);
-      if ($tm('tmTabContent')) {
+      if ($tm('tmTabContent') && (!tm.tasks || tm.tasks.length === 0)) {
         $tm('tmTabContent').innerHTML = `<div style="padding:30px;background:#FFF;border-radius:12px;border:1px solid #E2E8F0;color:#EF4444;">
           <strong>Error loading task manager:</strong> ${escHtml(e.message)}
         </div>`;
