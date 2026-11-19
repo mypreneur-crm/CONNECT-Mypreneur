@@ -625,6 +625,7 @@
 .badge-status.open { background: #E0F2FE; color: #0369A1; }
 .badge-status.ready { background: #F3E8FF; color: #6B21A8; }
 .badge-status.in_progress { background: #FEF3C7; color: #92400E; }
+.badge-status.in_review, .badge-status.review { background: #EDE9FE; color: #6D28D9; border: 1px solid #DDD6FE; }
 .badge-status.completed { background: #D1FAE5; color: #065F46; }
 .badge-status.cancelled { background: #F1F5F9; color: #64748B; }
 .badge-status.blocked { background: #FEE2E2; color: #991B1B; }

@@ -47,6 +47,7 @@
 
   // Helper Utilities
   const $tm = id => document.getElementById(id);
+  window.$tm = $tm;
   const escHtml = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
   function isTaskAdmin() {
@@ -573,6 +574,7 @@
 
     const overdueTasks = targetTasks.filter(t => t.is_overdue && t.status !== 'COMPLETED');
     const inProgressTasks = targetTasks.filter(t => t.status === 'IN_PROGRESS');
+    const inReviewTasks = targetTasks.filter(t => t.status === 'IN_REVIEW' || t.status === 'REVIEW');
     const openTasks = targetTasks.filter(t => t.status === 'OPEN' || t.status === 'READY');
     const completedTasks = targetTasks.filter(t => t.status === 'COMPLETED');
 
@@ -591,6 +593,8 @@
         if (t.status !== 'OPEN' && t.status !== 'READY') return false;
       } else if (statusFilter === 'IN_PROGRESS') {
         if (t.status !== 'IN_PROGRESS') return false;
+      } else if (statusFilter === 'IN_REVIEW' || statusFilter === 'REVIEW') {
+        if (t.status !== 'IN_REVIEW' && t.status !== 'REVIEW') return false;
       } else if (statusFilter === 'COMPLETED') {
         if (t.status !== 'COMPLETED') return false;
       } else if (statusFilter === 'OVERDUE') {
@@ -825,7 +829,7 @@
               <span style="font-size:13px;font-weight:600;color:var(--muted);">(${filteredTasks.length}${filteredTasks.length !== targetTasks.length ? ` shown of ${targetTasks.length}` : ''})</span>
             </h3>
             <div style="font-size:12.5px;color:var(--muted);margin-top:3px;">
-              In Progress: <strong style="color:#D97706;">${inProgressTasks.length}</strong> · Open: <strong style="color:#0284C7;">${openTasks.length}</strong> · Completed: <strong style="color:#059669;">${completedTasks.length}</strong>${overdueTasks.length > 0 ? ` · Overdue: <strong style="color:#DC2626;">${overdueTasks.length}</strong>` : ''}
+              In Progress: <strong style="color:#D97706;">${inProgressTasks.length}</strong> · In Review: <strong style="color:#7C3AED;">${inReviewTasks.length}</strong> · Open: <strong style="color:#0284C7;">${openTasks.length}</strong> · Completed: <strong style="color:#059669;">${completedTasks.length}</strong>${overdueTasks.length > 0 ? ` · Overdue: <strong style="color:#DC2626;">${overdueTasks.length}</strong>` : ''}
             </div>
           </div>
 
@@ -842,9 +846,10 @@
 
             <!-- Status Filter Dropdown -->
             <select class="tm-table-select" onchange="tmSetMyWorkStatusFilter(this.value)" title="Filter tasks by status">
-              <option value="active" ${statusFilter === 'active' ? 'selected' : ''}>🎯 Active (Open &amp; In Progress)</option>
+              <option value="active" ${statusFilter === 'active' ? 'selected' : ''}>🎯 Active (Open, In Progress, In Review)</option>
               <option value="all" ${statusFilter === 'all' ? 'selected' : ''}>📋 All Tasks (${targetTasks.length})</option>
               <option value="IN_PROGRESS" ${statusFilter === 'IN_PROGRESS' ? 'selected' : ''}>⚡ In Progress (${inProgressTasks.length})</option>
+              <option value="IN_REVIEW" ${statusFilter === 'IN_REVIEW' || statusFilter === 'REVIEW' ? 'selected' : ''}>👁️ In Review (${inReviewTasks.length})</option>
               <option value="OPEN" ${statusFilter === 'OPEN' ? 'selected' : ''}>📂 Open / Ready (${openTasks.length})</option>
               <option value="OVERDUE" ${statusFilter === 'OVERDUE' ? 'selected' : ''}>🚨 Overdue (${overdueTasks.length})</option>
               <option value="COMPLETED" ${statusFilter === 'COMPLETED' ? 'selected' : ''}>✅ Completed (${completedTasks.length})</option>
@@ -1176,7 +1181,7 @@
 
     const colOpen = filtered.filter(t => t.status === 'OPEN' || t.status === 'READY');
     const colProgress = filtered.filter(t => t.status === 'IN_PROGRESS');
-    const colReview = filtered.filter(t => t.status === 'IN_REVIEW');
+    const colReview = filtered.filter(t => t.status === 'IN_REVIEW' || t.status === 'REVIEW');
     const colCompleted = filtered.filter(t => t.status === 'COMPLETED');
 
     return `
@@ -2318,7 +2323,7 @@
             <select onchange="tmChangeTaskStatus('${t.id}', this.value); tmOpenEventWorkspace('${eventId}');" style="font-size:12px;font-weight:700;border:1px solid #CBD5E1;border-radius:6px;padding:3px 6px;">
               <option value="OPEN" ${t.status === 'OPEN' ? 'selected' : ''}>Open</option>
               <option value="IN_PROGRESS" ${t.status === 'IN_PROGRESS' ? 'selected' : ''}>In Progress</option>
-              <option value="REVIEW" ${t.status === 'REVIEW' ? 'selected' : ''}>In Review</option>
+              <option value="IN_REVIEW" ${t.status === 'IN_REVIEW' || t.status === 'REVIEW' ? 'selected' : ''}>In Review</option>
               <option value="COMPLETED" ${t.status === 'COMPLETED' ? 'selected' : ''}>Completed</option>
             </select>
             ${isTimerRunning ? `
@@ -3027,7 +3032,7 @@
                   onkeydown="if(event.key==='Enter'){event.preventDefault();tmUpdateTaskTitle('${t.id}', this.value);}"
                   style="font-size:16px;font-weight:800;color:var(--navy);border:1.5px solid #CBD5E1;border-radius:8px;padding:6px 12px;width:100%;box-sizing:border-box;background:#FFF;"
                   title="Edit task title and press Enter or Save" />
-                <button class="btn btn-sm btn-secondary" style="font-weight:700;white-space:nowrap;padding:6px 12px;" onclick="tmUpdateTaskTitle('${t.id}', $tm('td_title_input').value)">
+                <button class="btn btn-sm btn-secondary" style="font-weight:700;white-space:nowrap;padding:6px 12px;" onclick="tmUpdateTaskTitle('${t.id}', (document.getElementById('td_title_input') ? document.getElementById('td_title_input').value : ''))">
                   Save
                 </button>
               </div>
@@ -3084,7 +3089,7 @@
                 <select onchange="tmChangeTaskStatus('${t.id}', this.value)" style="margin-top:2px;font-size:12.5px;font-weight:700;border:1px solid #CBD5E1;border-radius:6px;padding:4px 6px;width:100%;background:#FFF;">
                   <option value="OPEN" ${t.status === 'OPEN' ? 'selected' : ''}>Open</option>
                   <option value="IN_PROGRESS" ${t.status === 'IN_PROGRESS' ? 'selected' : ''}>In Progress</option>
-                  <option value="IN_REVIEW" ${t.status === 'IN_REVIEW' ? 'selected' : ''}>In Review</option>
+                  <option value="IN_REVIEW" ${t.status === 'IN_REVIEW' || t.status === 'REVIEW' ? 'selected' : ''}>In Review</option>
                   <option value="COMPLETED" ${t.status === 'COMPLETED' ? 'selected' : ''}>Completed</option>
                   <option value="BLOCKED" ${t.status === 'BLOCKED' ? 'selected' : ''}>Blocked</option>
                 </select>
@@ -3291,6 +3296,7 @@
                       <select onchange="tmChangeTaskStatus('${s.id}', this.value)" style="font-size:11px;border-radius:4px;padding:2px 4px;">
                         <option value="OPEN" ${s.status === 'OPEN' ? 'selected' : ''}>Open</option>
                         <option value="IN_PROGRESS" ${s.status === 'IN_PROGRESS' ? 'selected' : ''}>In Progress</option>
+                        <option value="IN_REVIEW" ${s.status === 'IN_REVIEW' || s.status === 'REVIEW' ? 'selected' : ''}>In Review</option>
                         <option value="COMPLETED" ${s.status === 'COMPLETED' ? 'selected' : ''}>Completed</option>
                       </select>
                     </div>
@@ -3326,14 +3332,15 @@
   };
 
   window.tmUpdateTaskTitle = async function(taskId, newTitle) {
-    if (!newTitle || !newTitle.trim()) {
+    const titleVal = (newTitle !== undefined && newTitle !== null ? newTitle : (document.getElementById('td_title_input')?.value || '')).trim();
+    if (!titleVal) {
       alert('Task title cannot be empty.');
       return;
     }
     try {
       await apiRequest(`/api/tasks/${taskId}`, {
         method: 'PATCH',
-        body: { title: newTitle.trim() }
+        body: { title: titleVal }
       });
       toast('Task title updated successfully');
       await tmLoadAll();
