@@ -1487,7 +1487,7 @@ async function handleApi(req, res, url) {
       ORDER BY t.team_name ASC, e.first_name ASC
     `);
 
-    // 2. Query today's approved leaves (do not leak private reason into directory)
+    // 2. Query today's approved leaves (do not leak private reason into directory; exclude PERMISSION)
     let activeLeaves = [];
     try {
       activeLeaves = await db.all(`
@@ -1495,6 +1495,7 @@ async function handleApi(req, res, url) {
         FROM leaves
         WHERE ? BETWEEN start_date AND end_date
           AND UPPER(status) = 'APPROVED'
+          AND UPPER(leave_duration) != 'PERMISSION'
       `, [today]);
     } catch (e) {}
     const leaveMap = new Map();
@@ -1547,11 +1548,19 @@ async function handleApi(req, res, url) {
 
       // Live presence requires an active heartbeat or portal interaction within the last 60 seconds
       const isHeartbeatActive = Boolean(lastSeenMs && (now - lastSeenMs <= 60 * 1000));
+      const isCheckedIn = Boolean(attInfo && (attInfo.check_in || ['PRESENT', 'WFH', 'LATE'].includes(String(attInfo.status || '').toUpperCase())));
 
-      if (leaveInfo) {
+      // An employee is only ON_LEAVE if they have an approved leave (or attendance ON_LEAVE) AND are NOT checked in or active in portal
+      const isActuallyOnLeave = Boolean(
+        (leaveInfo || (attInfo && String(attInfo.status || '').toUpperCase() === 'ON_LEAVE')) &&
+        !isCheckedIn &&
+        !isHeartbeatActive
+      );
+
+      if (isActuallyOnLeave) {
         status = 'ON_LEAVE';
         statusLabel = 'On Leave';
-        statusNote = leaveInfo.leave_duration === 'HALF_DAY' ? 'Half Day Leave' : 'On Leave';
+        statusNote = (leaveInfo && leaveInfo.leave_duration === 'HALF_DAY') ? 'Half Day Leave' : 'On Leave';
         stats.on_leave++;
       } else if (isHeartbeatActive && cp && cp.status === 'AWAY') {
         status = 'AWAY';
@@ -1566,7 +1575,7 @@ async function handleApi(req, res, url) {
       } else {
         status = 'OFFLINE';
         statusLabel = 'Offline';
-        statusNote = emp.last_login ? `Last login: ${emp.last_login}` : 'Offline';
+        statusNote = isCheckedIn ? (attInfo?.status === 'WFH' ? 'Working from Home' : 'Present in Office') : (emp.last_login ? `Last login: ${emp.last_login}` : 'Offline');
         stats.offline++;
       }
 

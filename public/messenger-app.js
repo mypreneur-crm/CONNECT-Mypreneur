@@ -324,15 +324,19 @@
       const customStatus = (p && p.custom_status) ? p.custom_status : '';
 
       const dot = el.querySelector('.contact-status-dot');
-      if (dot && !dot.classList.contains('on_leave')) {
-        dot.className = `contact-status-dot ${status}`;
-        dot.title = `${capitalize(status)}${customStatus ? ': ' + customStatus : ''}`;
+      if (dot) {
+        if (!dot.classList.contains('on_leave') || status === 'online' || status === 'away') {
+          dot.className = `contact-status-dot ${status}`;
+          dot.title = `${capitalize(status)}${customStatus ? ': ' + customStatus : ''}`;
+        }
       }
 
       const badge = el.querySelector('.presence-badge');
-      if (badge && !badge.classList.contains('on_leave')) {
-        badge.className = `presence-badge ${status}`;
-        badge.textContent = `● ${capitalize(status)}`;
+      if (badge) {
+        if (!badge.classList.contains('on_leave') || status === 'online' || status === 'away') {
+          badge.className = `presence-badge ${status}`;
+          badge.textContent = `● ${capitalize(status)}`;
+        }
       }
     });
 
