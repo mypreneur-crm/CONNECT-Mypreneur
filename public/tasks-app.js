@@ -3004,8 +3004,10 @@
       const dueStatus = getDueStatus(t.due_date, t.status);
       const isOverdue = dueStatus.isOverdue;
       const isTimerRunning = isTaskTimerRunning(t.id);
-    const runningTimer = getTaskTimer(t.id);
+      const runningTimer = getTaskTimer(t.id);
       const isApprovalPending = t.approval_status === 'PENDING';
+      const admin = isTaskAdmin();
+      const canApprove = isExecutiveLeader();
 
       const anchor = $tm('tmModalAnchor');
       anchor.innerHTML = `
@@ -3067,7 +3069,7 @@
                   <strong style="color:#92400E;font-size:13.5px;">🔒 Approval Required Before Execution</strong>
                   <p style="color:#B45309;font-size:12.5px;margin:2px 0 0 0;">This task is awaiting managerial authorization. Timers and work execution are blocked until approved.</p>
                 </div>
-                ${admin ? `
+                ${(admin || canApprove) ? `
                 <div style="display:flex;gap:8px;">
                   <button class="btn btn-sm" style="background:#EF4444;color:#FFF;border-radius:8px;font-weight:700;" onclick="tmSubmitApproval('${t.id}', 'REJECTED')">
                     Reject
