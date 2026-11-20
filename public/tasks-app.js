@@ -525,7 +525,7 @@
       container.innerHTML = renderBoardTab();
     } else if (tm.currentTab === 'team-capacity') {
       container.innerHTML = renderTeamCapacityTab();
-      tmLoadTeamCapacity();
+      tmLoadTeamCapacity(tm.teamCapacityDate);
     } else if (tm.currentTab === 'events') {
       container.innerHTML = renderEventsTab();
       tmLoadEvents();
@@ -1689,6 +1689,8 @@
       </div>`;
     }
 
+    const selectedDate = tm.teamCapacityDate || new Date().toISOString().split('T')[0];
+
     return `
     <div style="display:flex;flex-direction:column;gap:18px;">
       <div style="background:#FFF;padding:18px 24px;border-radius:14px;border:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
@@ -1699,7 +1701,7 @@
           </p>
         </div>
         <div>
-          <input type="date" id="tmCapDateInput" value="${new Date().toISOString().split('T')[0]}" onchange="tmLoadTeamCapacity(this.value)" style="padding:6px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;">
+          <input type="date" id="tmCapDateInput" value="${selectedDate}" onchange="tmLoadTeamCapacity(this.value)" style="padding:6px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;">
         </div>
       </div>
 
@@ -1710,11 +1712,14 @@
     `;
   }
 
-  async function tmLoadTeamCapacity(dateStr) {
+  window.tmLoadTeamCapacity = async function tmLoadTeamCapacity(dateStr) {
+    const targetDate = dateStr || (document.getElementById('tmCapDateInput')?.value) || tm.teamCapacityDate || new Date().toISOString().split('T')[0];
+    tm.teamCapacityDate = targetDate;
     const container = $tm('tmTeamCapacityGrid');
     if (!container) return;
+    container.innerHTML = `<div style="padding:30px;color:var(--muted);text-align:center;grid-column:1/-1;">Loading team capacity for ${escHtml(targetDate)}...</div>`;
     try {
-      const url = '/api/tasks/team-capacity' + (dateStr ? `?date=${dateStr}` : '');
+      const url = '/api/tasks/team-capacity?date=' + encodeURIComponent(targetDate);
       const res = await apiRequest(url);
       tm.teamCapacity = (res.data || []).filter(m => !isExecutive(m));
 
