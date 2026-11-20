@@ -1020,20 +1020,44 @@
       </div>
 
       <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(260px, 1fr));gap:10px;">
-        ${displayItems.slice(0, 8).map(it => `
+        ${displayItems.slice(0, 8).map(it => {
+          const isMenteeCall = (it.source === 'CRM_MENTEES' || it.source === 'CRM_CONVERSION');
+          let sourceLabel = '';
+          let badgeHtml = '';
+
+          if (isMenteeCall) {
+            sourceLabel = `<span style="font-size:11px;font-weight:700;color:#0284C7;text-transform:uppercase;">CRM MENTEE</span>`;
+            badgeHtml = it.isScheduledToday
+              ? `<span style="font-size:11px;background:#ECFDF5;color:#047857;padding:2px 7px;border-radius:4px;font-weight:700;">📞 Mentee Call (30m)</span>`
+              : `<span style="font-size:11px;background:#F1F5F9;color:#64748B;padding:2px 7px;border-radius:4px;font-weight:600;">📞 Call: ${escHtml(it.assignedDay || 'Assigned')}</span>`;
+          } else if (it.source === 'EVENT_WORK') {
+            sourceLabel = `<span style="font-size:11px;font-weight:700;color:#B45309;text-transform:uppercase;">EVENT WORK</span>`;
+            const dur = formatMins(it.estimatedMinutes || 60);
+            badgeHtml = it.isScheduledToday
+              ? `<span style="font-size:11px;background:#FEF3C7;color:#92400E;padding:2px 7px;border-radius:4px;font-weight:700;">🎯 Event Task (${dur})</span>`
+              : `<span style="font-size:11px;background:#F1F5F9;color:#64748B;padding:2px 7px;border-radius:4px;font-weight:600;">🎯 Scheduled Task (${dur})</span>`;
+          } else if (it.source === 'CRM_SALES') {
+            sourceLabel = `<span style="font-size:11px;font-weight:700;color:#1D4ED8;text-transform:uppercase;">SALES LEAD</span>`;
+            badgeHtml = `<span style="font-size:11px;background:#EFF6FF;color:#1D4ED8;padding:2px 7px;border-radius:4px;font-weight:700;">💼 Lead Pipeline (15m)</span>`;
+          } else if (it.source === 'CRM_DIGITAL') {
+            sourceLabel = `<span style="font-size:11px;font-weight:700;color:#7C3AED;text-transform:uppercase;">DIGITAL</span>`;
+            badgeHtml = `<span style="font-size:11px;background:#F5F3FF;color:#6D28D9;padding:2px 7px;border-radius:4px;font-weight:700;">🎨 Deliverable (60m)</span>`;
+          } else {
+            sourceLabel = `<span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">${escHtml(it.source)}</span>`;
+            badgeHtml = `<span style="font-size:11px;background:#F1F5F9;color:#475569;padding:2px 7px;border-radius:4px;font-weight:600;">📋 Task (${formatMins(it.estimatedMinutes || 30)})</span>`;
+          }
+
+          return `
           <div style="background:#FFF;border:1px solid ${it.isScheduledToday ? '#A7F3D0' : '#E2E8F0'};box-shadow:${it.isScheduledToday ? '0 1px 3px rgba(16,185,129,0.1)' : 'none'};border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-              <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">${escHtml(it.source)}</span>
-              ${it.isScheduledToday ? `
-                <span style="font-size:11px;background:#ECFDF5;color:#047857;padding:2px 7px;border-radius:4px;font-weight:700;">📅 Call Today (30m)</span>
-              ` : `
-                <span style="font-size:11px;background:#F1F5F9;color:#64748B;padding:2px 7px;border-radius:4px;font-weight:600;">Call: ${escHtml(it.assignedDay || 'Assigned')}</span>
-              `}
+              ${sourceLabel}
+              ${badgeHtml}
             </div>
             <strong style="font-size:13.5px;color:var(--navy);line-height:1.3;">${escHtml(it.title)}</strong>
             <div style="font-size:12px;color:var(--muted);">${escHtml(it.detail || '')}</div>
           </div>
-        `).join('')}
+          `;
+        }).join('')}
       </div>
       ${displayItems.length > 8 ? `
         <div style="text-align:center;margin-top:10px;font-size:12.5px;color:var(--muted);">
