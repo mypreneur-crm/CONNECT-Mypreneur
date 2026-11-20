@@ -46,6 +46,9 @@ CREATE TABLE IF NOT EXISTS connect_task_tasks (
   completed_at DATETIME NULL,
   crm_reference_id VARCHAR(100) NULL,
   handoff_notes TEXT NULL,
+  due_date_reason TEXT NULL,
+  due_date_changed_by_employee_id INT NULL,
+  due_date_changed_at DATETIME NULL,
   created_at DATETIME NOT NULL,
   updated_at DATETIME NOT NULL,
   PRIMARY KEY (id),
@@ -143,4 +146,20 @@ CREATE TABLE IF NOT EXISTS connect_task_audit_log (
   KEY idx_audit_task (task_id),
   KEY idx_audit_created (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS connect_task_comments (
+  id BIGINT UNSIGNED AUTO_INCREMENT NOT NULL,
+  task_id CHAR(36) NOT NULL,
+  employee_id INT NOT NULL,
+  user_id BIGINT UNSIGNED NULL,
+  comment_type VARCHAR(50) NOT NULL DEFAULT 'DUE_DATE_CHANGE',
+  old_value VARCHAR(100) NULL,
+  new_value VARCHAR(100) NULL,
+  comment TEXT NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_task_comments_task (task_id),
+  KEY idx_task_comments_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 

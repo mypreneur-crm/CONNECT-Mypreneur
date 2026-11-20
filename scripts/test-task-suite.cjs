@@ -135,23 +135,47 @@ async function runTests() {
   }
   console.log('✓ Verified: All active timers stopped cleanly.');
 
-  // Test 5b: Testing Task Name, Due Date, and Priority Editable by Employee
-  console.log('\n[Test 5b] Testing Task Title, Due Date, and Priority Editing...');
+  // Test 5b: Testing Task Name, Due Date, and Priority Editable by Employee with Required Reason
+  console.log('\n[Test 5b] Testing Task Title, Due Date, and Priority Editing with Reason...');
+  let dateChangeBlocked = false;
+  try {
+    // Attempting date change without reason must fail
+    await service.updateTask(task1.id, {
+      due_date: '2026-11-25'
+    }, testUser);
+  } catch (err) {
+    if (err.message.includes('reason')) {
+      dateChangeBlocked = true;
+    }
+  }
+  if (!dateChangeBlocked) {
+    throw new Error('Changing due date without providing a reason should have failed!');
+  }
+  console.log('✓ Correctly blocked due date change without reason.');
+
   const updatedTask = await service.updateTask(task1.id, {
     title: 'Review Mentee Onboarding Pipeline - Updated Title',
     priority: 'HIGH',
-    due_date: '2026-11-20'
+    due_date: '2026-11-25',
+    reason: 'Client requested onboarding extension due to travel schedule'
   }, testUser);
-  console.log(`✓ Task updated: title="${updatedTask.title}", priority="${updatedTask.priority}", deadline="${updatedTask.deadline}"`);
+  console.log(`✓ Task updated: title="${updatedTask.title}", priority="${updatedTask.priority}", deadline="${updatedTask.deadline}", reason="${updatedTask.due_date_reason}"`);
   if (updatedTask.title !== 'Review Mentee Onboarding Pipeline - Updated Title') {
     throw new Error('Task title did not update correctly!');
   }
   if (updatedTask.priority !== 'HIGH') {
     throw new Error('Task priority did not update correctly!');
   }
-  if (!String(updatedTask.deadline).startsWith('2026-11-20')) {
+  if (!String(updatedTask.deadline).startsWith('2026-11-25')) {
     throw new Error('Task due date did not update correctly!');
   }
+  if (updatedTask.due_date_reason !== 'Client requested onboarding extension due to travel schedule') {
+    throw new Error('Due date reason did not save correctly!');
+  }
+  if (!updatedTask.comments || updatedTask.comments.length === 0) {
+    throw new Error('Due date change comment was not recorded in connect_task_comments!');
+  }
+  console.log(`✓ Recorded comment verified in history: "${updatedTask.comments[0].comment}"`);
 
   // 6. Test 9-Hour Capacity & Utilization Calculation
   console.log('\n[Test 6] Testing 540-minute Daily Capacity Engine...');

@@ -61,6 +61,24 @@ async function runMigration() {
   } else {
     console.log("✓ Column handoff_notes already present");
   }
+  if (!colNames.includes('due_date_reason')) {
+    await db.run("ALTER TABLE connect_task_tasks ADD COLUMN due_date_reason TEXT NULL AFTER deadline");
+    console.log("✓ Added column due_date_reason to connect_task_tasks");
+  } else {
+    console.log("✓ Column due_date_reason already present");
+  }
+  if (!colNames.includes('due_date_changed_by_employee_id')) {
+    await db.run("ALTER TABLE connect_task_tasks ADD COLUMN due_date_changed_by_employee_id INT NULL AFTER due_date_reason");
+    console.log("✓ Added column due_date_changed_by_employee_id to connect_task_tasks");
+  } else {
+    console.log("✓ Column due_date_changed_by_employee_id already present");
+  }
+  if (!colNames.includes('due_date_changed_at')) {
+    await db.run("ALTER TABLE connect_task_tasks ADD COLUMN due_date_changed_at DATETIME NULL AFTER due_date_changed_by_employee_id");
+    console.log("✓ Added column due_date_changed_at to connect_task_tasks");
+  } else {
+    console.log("✓ Column due_date_changed_at already present");
+  }
 
   // Ensure crm_event_id column exists on connect_task_events
   const eventCols = await db.all(

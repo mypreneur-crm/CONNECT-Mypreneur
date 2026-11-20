@@ -3108,10 +3108,16 @@
               <div>
                 <span style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600;">Due Date</span>
                 <div style="display:flex;align-items:center;gap:4px;margin-top:2px;">
-                  <input type="date" value="${t.due_date ? extractDateStr(t.due_date) : ''}"
-                    onchange="tmUpdateTaskDueDate('${t.id}', this.value)"
+                  <input type="date" id="td_due_date_input_${t.id}" value="${t.due_date ? extractDateStr(t.due_date) : ''}"
+                    onchange="tmPromptDueDateChange('${t.id}', '${t.due_date ? extractDateStr(t.due_date) : ''}', this.value, this)"
                     style="font-size:12px;font-weight:700;border:1px solid #CBD5E1;border-radius:6px;padding:4px 6px;color:${dueStatus.isOverdue ? '#EF4444' : 'var(--navy)'};background:#FFF;width:100%;" />
                 </div>
+                ${t.due_date_reason ? `
+                  <div style="margin-top:4px;font-size:11px;color:#334155;background:#F1F5F9;padding:4px 7px;border-radius:6px;border-left:3px solid #3B82F6;line-height:1.3;" title="Reason for date change">
+                    <span style="font-weight:700;color:#2563EB;">Reason:</span> "${escHtml(t.due_date_reason)}"
+                    ${t.due_date_changed_by_name ? `<div style="color:#64748B;font-size:10px;margin-top:2px;">— ${escHtml(t.due_date_changed_by_name)} ${t.due_date_changed_at ? `(${new Date(t.due_date_changed_at).toLocaleDateString()})` : ''}</div>` : ''}
+                  </div>
+                ` : ''}
               </div>
               <div>
                 <span style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600;">Assignee</span>
@@ -3308,6 +3314,42 @@
                 <div style="font-size:12.5px;color:var(--muted);padding:8px 0;">No subtasks created for this task yet.</div>
               `}
             </div>
+
+            <!-- Due Date History & Comments Section -->
+            <div style="border-top:1px solid var(--border);padding-top:14px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                <strong style="font-size:14px;color:var(--navy);display:flex;align-items:center;gap:6px;">
+                  <span>💬</span> Due Date History &amp; Comments (${(t.comments || []).length})
+                </strong>
+                <button class="btn btn-sm btn-secondary" onclick="tmOpenAddCommentModal('${t.id}')" style="font-size:11.5px;padding:3px 8px;font-weight:600;">
+                  + Add Comment
+                </button>
+              </div>
+
+              ${(t.comments && t.comments.length > 0) ? `
+                <div style="display:flex;flex-direction:column;gap:8px;max-height:220px;overflow-y:auto;padding-right:2px;">
+                  ${t.comments.map(c => `
+                    <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:8px 12px;font-size:12.5px;">
+                      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px;">
+                        <span style="font-weight:700;color:var(--navy);">${escHtml(c.employee_name || 'Staff')} ${c.team_name ? `<span style="font-weight:400;color:var(--muted);font-size:11px;">(${escHtml(c.team_name)})</span>` : ''}</span>
+                        <span style="font-size:11px;color:var(--muted);">${new Date(c.created_at).toLocaleString()}</span>
+                      </div>
+                      ${c.comment_type === 'DUE_DATE_CHANGE' ? `
+                        <div style="font-size:11.5px;color:#2563EB;margin-bottom:3px;font-weight:600;display:flex;align-items:center;gap:6px;">
+                          <span>📅 Due Date Change:</span>
+                          <span style="color:#64748B;">${c.old_value ? extractDateStr(c.old_value) : 'None'}</span>
+                          <span>&rarr;</span>
+                          <span style="color:#1D4ED8;font-weight:700;">${c.new_value ? extractDateStr(c.new_value) : 'Cleared'}</span>
+                        </div>
+                      ` : ''}
+                      <div style="color:#334155;white-space:pre-wrap;background:#FFF;padding:6px 10px;border-radius:6px;border:1px solid #EEF2F6;margin-top:2px;">${escHtml(c.comment)}</div>
+                    </div>
+                  `).join('')}
+                </div>
+              ` : `
+                <div style="font-size:12px;color:var(--muted);padding:4px 0;">No due date changes or comments recorded yet.</div>
+              `}
+            </div>
           </div>
         </div>
       </div>
@@ -3370,11 +3412,135 @@
     }
   };
 
-  window.tmUpdateTaskDueDate = async function(taskId, newDueDate) {
+  window.tmPromptDueDateChange = function(taskId, oldDueDate, newDueDate, inputEl) {
+    const oldStr = extractDateStr(oldDueDate);
+    const newStr = extractDateStr(newDueDate);
+    if (oldStr === newStr) return;
+
+    // Remove any existing date change modal first
+    const existingModal = document.getElementById('tmDueDateReasonModal');
+    if (existingModal) existingModal.remove();
+
+    const anchor = $tm('tmModalAnchor');
+    const modalHtml = `
+      <div class="dup-modal-overlay" id="tmDueDateReasonModal" style="z-index: 10005;">
+        <div class="dup-modal-box" style="max-width: 520px; animation: modalFadeIn 0.2s ease;">
+          <div class="dup-modal-head" style="background:#FFFBEB;border-bottom:1px solid #FDE68A;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="font-size:20px;">📅</span>
+              <strong style="font-size:16px;color:#92400E;">Reason for Due Date Change</strong>
+            </div>
+            <button class="btn" onclick="tmCancelDueDateChange('${taskId}', '${oldStr}')" style="font-size:20px;color:var(--muted);">&times;</button>
+          </div>
+          <div class="dup-modal-body" style="padding:18px;gap:14px;">
+            <p style="font-size:13px;color:#475569;margin:0;">
+              Please provide a comment explaining why the due date for this task is being changed. This will be recorded in the task history.
+            </p>
+
+            <div style="display:flex;align-items:center;justify-content:space-between;background:#F8FAFC;padding:10px 14px;border-radius:8px;border:1px solid #E2E8F0;font-size:13px;">
+              <div>
+                <span style="font-size:11px;text-transform:uppercase;color:var(--muted);font-weight:700;display:block;">Current Due Date</span>
+                <strong style="color:var(--navy);font-size:13.5px;">${oldStr || 'None'}</strong>
+              </div>
+              <div style="font-size:18px;color:#2563EB;font-weight:800;">➔</div>
+              <div style="text-align:right;">
+                <span style="font-size:11px;text-transform:uppercase;color:#1D4ED8;font-weight:700;display:block;">New Due Date</span>
+                <strong style="color:#1D4ED8;font-size:13.5px;">${newStr || 'Cleared'}</strong>
+              </div>
+            </div>
+
+            <div>
+              <label style="display:block;font-size:12.5px;font-weight:700;color:var(--navy);margin-bottom:6px;">
+                Comment / Reason for Date Change <span style="color:#EF4444;">*</span>
+              </label>
+              <textarea id="tm_due_date_reason_text" rows="3"
+                placeholder="Enter reason (required, e.g. Client requested extension, Waiting for feedback, Priority reshuffle)..."
+                style="width:100%;box-sizing:border-box;border:1.5px solid #CBD5E1;border-radius:8px;padding:8px 10px;font-size:13px;font-family:inherit;resize:vertical;"
+                onkeydown="if(event.key==='Enter' && (event.ctrlKey || event.metaKey)){ event.preventDefault(); tmSubmitDueDateChange('${taskId}', '${newStr}'); }"></textarea>
+            </div>
+
+            <!-- Quick Suggestions -->
+            <div>
+              <span style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:5px;">Quick Suggestions:</span>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                <button type="button" class="btn btn-sm" style="font-size:11px;background:#EFF6FF;color:#1E40AF;border:1px solid #BFDBFE;border-radius:14px;padding:2px 8px;font-weight:500;" onclick="document.getElementById('tm_due_date_reason_text').value='Client requested onboarding/project extension'">Client extension</button>
+                <button type="button" class="btn btn-sm" style="font-size:11px;background:#EFF6FF;color:#1E40AF;border:1px solid #BFDBFE;border-radius:14px;padding:2px 8px;font-weight:500;" onclick="document.getElementById('tm_due_date_reason_text').value='Waiting for review & managerial approval'">Waiting for review/approval</button>
+                <button type="button" class="btn btn-sm" style="font-size:11px;background:#EFF6FF;color:#1E40AF;border:1px solid #BFDBFE;border-radius:14px;padding:2px 8px;font-weight:500;" onclick="document.getElementById('tm_due_date_reason_text').value='Dependent on pending team deliverables'">Pending deliverables</button>
+                <button type="button" class="btn btn-sm" style="font-size:11px;background:#EFF6FF;color:#1E40AF;border:1px solid #BFDBFE;border-radius:14px;padding:2px 8px;font-weight:500;" onclick="document.getElementById('tm_due_date_reason_text').value='Scope / requirement updated'">Scope updated</button>
+              </div>
+            </div>
+
+            <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:6px;">
+              <button class="btn btn-secondary" onclick="tmCancelDueDateChange('${taskId}', '${oldStr}')" style="padding:6px 14px;font-weight:600;">
+                Cancel
+              </button>
+              <button class="btn btn-primary" onclick="tmSubmitDueDateChange('${taskId}', '${newStr}')" style="background:#2563EB;color:#FFF;padding:6px 16px;font-weight:700;">
+                Save Date Change
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    anchor.insertAdjacentHTML('beforeend', modalHtml);
+    setTimeout(() => {
+      const txt = document.getElementById('tm_due_date_reason_text');
+      if (txt) txt.focus();
+    }, 50);
+  };
+
+  window.tmCancelDueDateChange = function(taskId, oldDueDate) {
+    const modal = document.getElementById('tmDueDateReasonModal');
+    if (modal) modal.remove();
+
+    // Revert input in details modal if open
+    const input = document.getElementById(`td_due_date_input_${taskId}`);
+    if (input) {
+      input.value = oldDueDate || '';
+    }
+  };
+
+  window.tmSubmitDueDateChange = async function(taskId, newDueDate) {
+    const txt = document.getElementById('tm_due_date_reason_text');
+    const reason = (txt ? txt.value : '').trim();
+    if (!reason || reason.length < 3) {
+      alert('Please enter a comment / reason for changing the due date (minimum 3 characters).');
+      if (txt) txt.focus();
+      return;
+    }
+
     try {
       await apiRequest(`/api/tasks/${taskId}`, {
         method: 'PATCH',
-        body: { due_date: newDueDate || null }
+        body: {
+          due_date: newDueDate || null,
+          reason: reason,
+          comment: reason
+        }
+      });
+
+      const modal = document.getElementById('tmDueDateReasonModal');
+      if (modal) modal.remove();
+
+      toast(newDueDate ? `Due date updated to ${newDueDate}` : 'Due date cleared');
+      await tmLoadAll();
+      if (tm.selectedTask && tm.selectedTask.id === taskId) {
+        tmOpenTaskDetails(taskId);
+      }
+    } catch (e) {
+      alert(`Could not update due date: ${e.message}`);
+    }
+  };
+
+  window.tmUpdateTaskDueDate = async function(taskId, newDueDate, reason) {
+    try {
+      await apiRequest(`/api/tasks/${taskId}`, {
+        method: 'PATCH',
+        body: {
+          due_date: newDueDate || null,
+          reason: reason || 'Due date updated',
+          comment: reason || 'Due date updated'
+        }
       });
       toast(newDueDate ? `Due date updated to ${newDueDate}` : 'Due date cleared');
       await tmLoadAll();
@@ -3383,6 +3549,58 @@
       }
     } catch (e) {
       alert(`Could not update due date: ${e.message}`);
+    }
+  };
+
+  window.tmOpenAddCommentModal = function(taskId) {
+    const existing = document.getElementById('tmAddCommentModal');
+    if (existing) existing.remove();
+
+    const anchor = $tm('tmModalAnchor');
+    const modalHtml = `
+      <div class="dup-modal-overlay" id="tmAddCommentModal" style="z-index: 10005;">
+        <div class="dup-modal-box" style="max-width: 480px; animation: modalFadeIn 0.2s ease;">
+          <div class="dup-modal-head">
+            <strong style="font-size:15px;color:var(--navy);">Add Comment to Task</strong>
+            <button class="btn" onclick="document.getElementById('tmAddCommentModal').remove()" style="font-size:20px;color:var(--muted);">&times;</button>
+          </div>
+          <div class="dup-modal-body" style="padding:16px;gap:12px;">
+            <textarea id="tm_general_comment_text" rows="4" placeholder="Enter task comment, update, or progress note..." style="width:100%;box-sizing:border-box;border:1.5px solid #CBD5E1;border-radius:8px;padding:8px 10px;font-size:13px;resize:vertical;"></textarea>
+            <div style="display:flex;justify-content:flex-end;gap:8px;">
+              <button class="btn btn-secondary" onclick="document.getElementById('tmAddCommentModal').remove()">Cancel</button>
+              <button class="btn btn-primary" onclick="tmSubmitGeneralComment('${taskId}')" style="background:#2563EB;color:#FFF;font-weight:700;">Post Comment</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    anchor.insertAdjacentHTML('beforeend', modalHtml);
+    setTimeout(() => {
+      const txt = document.getElementById('tm_general_comment_text');
+      if (txt) txt.focus();
+    }, 50);
+  };
+
+  window.tmSubmitGeneralComment = async function(taskId) {
+    const txt = document.getElementById('tm_general_comment_text');
+    const comment = (txt ? txt.value : '').trim();
+    if (!comment) {
+      alert('Comment cannot be empty.');
+      return;
+    }
+    try {
+      await apiRequest(`/api/tasks/${taskId}/comments`, {
+        method: 'POST',
+        body: { comment }
+      });
+      const modal = document.getElementById('tmAddCommentModal');
+      if (modal) modal.remove();
+      toast('Comment posted successfully');
+      if (tm.selectedTask && tm.selectedTask.id === taskId) {
+        tmOpenTaskDetails(taskId);
+      }
+    } catch (e) {
+      alert(`Could not post comment: ${e.message}`);
     }
   };
 
