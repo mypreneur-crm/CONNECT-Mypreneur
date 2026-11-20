@@ -943,6 +943,11 @@
                     </td>
                     <td>
                       <span class="badge-status ${statusClass}">${statusIcon} ${escHtml((t.status || '').replace('_', ' '))}</span>
+                      ${(t.status === 'IN_REVIEW' || t.status === 'REVIEW') && t.reviewer_name ? `
+                        <div style="font-size:11px;color:#6D28D9;font-weight:600;margin-top:3px;display:flex;align-items:center;gap:3px;">
+                          <span>👁️</span> <span>Reviewer: ${escHtml(t.reviewer_name.split(' ')[0])}</span>
+                        </div>
+                      ` : ''}
                     </td>
                     <td>
                       <div>
@@ -1102,6 +1107,7 @@
               ${handoffBadge}
               ${contributorBadge}
               ${dueStatus.badgeHtml}
+              ${(t.status === 'IN_REVIEW' || t.status === 'REVIEW') && t.reviewer_name ? `<span style="font-size:11px;background:#EDE9FE;color:#6D28D9;padding:2px 7px;border-radius:4px;font-weight:700;">👁️ Reviewer: ${escHtml(t.reviewer_name.split(' ')[0])}</span>` : ''}
               ${isApprovalPending ? `<span style="font-size:11px;background:#FEF3C7;color:#92400E;padding:2px 7px;border-radius:4px;font-weight:700;">Pending Approval</span>` : ''}
             </div>
             <strong style="font-size:14px;color:var(--navy);">${escHtml(t.title)}</strong>
@@ -3032,6 +3038,8 @@
       const isApprovalPending = t.approval_status === 'PENDING';
       const admin = isTaskAdmin();
       const canApprove = isExecutiveLeader();
+      const myEmpId = (typeof session !== 'undefined' && session && (session.employeeId || session.employee_id)) || null;
+      const isReviewer = Boolean(t.reviewer_employee_id && myEmpId && Number(t.reviewer_employee_id) === Number(myEmpId));
 
       const anchor = $tm('tmModalAnchor');
       anchor.innerHTML = `
@@ -3108,6 +3116,40 @@
               </div>
             ` : ''}
 
+            <!-- In Review Workflow Banner -->
+            ${(t.status === 'IN_REVIEW' || t.status === 'REVIEW') ? `
+              <div style="background:#F5F3FF;border:1.5px solid #DDD6FE;border-radius:12px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+                <div>
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <span style="font-size:18px;">👁️</span>
+                    <strong style="color:#5B21B6;font-size:13.5px;">Awaiting Review: ${escHtml(t.reviewer_name || 'Assigned Reviewer')}</strong>
+                  </div>
+                  ${t.review_notes ? `
+                    <div style="color:#6D28D9;font-size:12.5px;margin:3px 0 0 24px;font-style:italic;">
+                      "${escHtml(t.review_notes)}"
+                    </div>
+                  ` : ''}
+                  ${t.review_requested_at ? `
+                    <div style="color:#8B5CF6;font-size:11px;margin:2px 0 0 24px;">
+                      Requested on ${new Date(t.review_requested_at).toLocaleDateString()}
+                    </div>
+                  ` : ''}
+                </div>
+                ${(admin || isReviewer) ? `
+                <div style="display:flex;gap:8px;">
+                  <button class="btn btn-sm" style="background:#EF4444;color:#FFF;border-radius:8px;font-weight:700;" onclick="tmPromptRequestChanges('${t.id}')">
+                    ↩ Request Changes
+                  </button>
+                  <button class="btn btn-sm" style="background:#10B981;color:#FFF;border-radius:8px;font-weight:700;" onclick="tmApproveReview('${t.id}')">
+                    ✓ Approve & Complete
+                  </button>
+                </div>
+                ` : `
+                <span style="font-size:12px;font-weight:700;color:#6D28D9;background:#EDE9FE;padding:4px 10px;border-radius:6px;">Assigned Reviewer</span>
+                `}
+              </div>
+            ` : ''}
+
             <!-- Meta attributes -->
             <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));gap:10px;background:#F8FAFC;padding:12px 14px;border-radius:12px;border:1px solid #E2E8F0;">
               <div>
@@ -3147,6 +3189,12 @@
                 <span style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600;">Assignee</span>
                 <div style="font-size:13px;font-weight:700;color:var(--navy);margin-top:6px;">👤 ${escHtml(t.owner_name || 'Unassigned')}</div>
               </div>
+              ${t.reviewer_name ? `
+              <div>
+                <span style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600;">Reviewer</span>
+                <div style="font-size:13px;font-weight:700;color:#6D28D9;margin-top:6px;">👁️ ${escHtml(t.reviewer_name)}</div>
+              </div>
+              ` : ''}
               <div>
                 <span style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600;">Assigned By</span>
                 <div style="font-size:13px;font-weight:700;color:#0284C7;margin-top:6px;">✍️ ${escHtml(t.creator_name || t.created_by_name || 'Admin')}</div>
@@ -3384,6 +3432,10 @@
   };
 
   window.tmChangeTaskStatus = async function(taskId, newStatus) {
+    if (newStatus === 'IN_REVIEW' || newStatus === 'REVIEW') {
+      tmPromptSubmitForReview(taskId);
+      return;
+    }
     try {
       await apiRequest(`/api/tasks/${taskId}`, {
         method: 'PATCH',
@@ -3396,6 +3448,164 @@
       }
     } catch (e) {
       alert(`Status update error: ${e.message}`);
+    }
+  };
+
+  window.tmPromptSubmitForReview = function(taskId, fallbackOldStatus = 'IN_PROGRESS') {
+    const t = (tm.tasks || []).find(x => String(x.id) === String(taskId)) || tm.selectedTask || {};
+    const taskTitle = t.title || 'Task #' + taskId;
+    const taskCode = t.task_code || '';
+    const defaultReviewerId = t.reviewer_employee_id || t.created_by_employee_id || t.creator_user_id || '';
+
+    const existing = document.getElementById('tmReviewSubmitModal');
+    if (existing) existing.remove();
+
+    const members = tm.teamMembers || [];
+    const memberOptions = members.map(m => {
+      const isSel = String(m.employee_id) === String(defaultReviewerId) ? 'selected' : '';
+      return `<option value="${m.employee_id}" ${isSel}>${escHtml(m.name || (m.first_name + ' ' + (m.last_name || '')))} (${escHtml(m.department || 'Staff')})</option>`;
+    }).join('');
+
+    const anchor = $tm('tmModalAnchor');
+    const modalHtml = `
+      <div class="dup-modal-overlay" id="tmReviewSubmitModal" style="z-index: 10005;">
+        <div class="dup-modal-box" style="max-width: 520px; animation: modalFadeIn 0.2s ease;">
+          <div class="dup-modal-head" style="background:#F5F3FF;border-bottom:1px solid #DDD6FE;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="font-size:20px;">👁️</span>
+              <strong style="font-size:16px;color:#5B21B6;">Submit Task for Review</strong>
+            </div>
+            <button class="btn" onclick="tmCancelSubmitForReview('${taskId}', '${fallbackOldStatus}')" style="font-size:20px;color:var(--muted);">&times;</button>
+          </div>
+          <div class="dup-modal-body" style="padding:18px;gap:14px;">
+            <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:10px 12px;">
+              <span style="font-size:11px;font-weight:700;color:var(--muted);">${escHtml(taskCode)}</span>
+              <div style="font-weight:700;font-size:13.5px;color:var(--navy);margin-top:2px;">${escHtml(taskTitle)}</div>
+            </div>
+
+            <div>
+              <label style="display:block;font-size:12px;font-weight:700;color:var(--navy);margin-bottom:5px;">
+                Assign Reviewer <span style="color:#DC2626;">*</span>
+              </label>
+              <select id="tm_review_reviewer_select" style="width:100%;padding:8px 10px;font-size:13px;font-weight:600;border:1.5px solid #CBD5E1;border-radius:8px;background:#FFF;">
+                <option value="">-- Select Reviewer --</option>
+                ${memberOptions}
+              </select>
+              <div style="font-size:11.5px;color:var(--muted);margin-top:4px;">
+                Task allocation and review responsibility will transfer to this reviewer.
+              </div>
+            </div>
+
+            <div>
+              <label style="display:block;font-size:12px;font-weight:700;color:var(--navy);margin-bottom:5px;">
+                Notes for Reviewer (Optional)
+              </label>
+              <textarea id="tm_review_notes_input" rows="3" style="width:100%;padding:8px 10px;font-size:13px;border:1.5px solid #CBD5E1;border-radius:8px;resize:vertical;box-sizing:border-box;"
+                placeholder="E.g. Completed initial implementation. Please verify results and confirm quality."></textarea>
+            </div>
+
+            <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:8px;">
+              <button class="btn btn-secondary" onclick="tmCancelSubmitForReview('${taskId}', '${fallbackOldStatus}')">
+                Cancel
+              </button>
+              <button class="btn btn-primary" style="background:#7C3AED;border-color:#7C3AED;font-weight:700;" onclick="tmConfirmSubmitForReview('${taskId}')">
+                Submit for Review →
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    anchor.innerHTML += modalHtml;
+  };
+
+  window.tmCancelSubmitForReview = function(taskId, fallbackOldStatus) {
+    const modal = document.getElementById('tmReviewSubmitModal');
+    if (modal) modal.remove();
+    if (tm.selectedTask && tm.selectedTask.id === taskId) {
+      tmOpenTaskDetails(taskId);
+    }
+  };
+
+  window.tmConfirmSubmitForReview = async function(taskId) {
+    const revSelect = document.getElementById('tm_review_reviewer_select');
+    const notesInput = document.getElementById('tm_review_notes_input');
+    const reviewerId = revSelect ? revSelect.value : '';
+    const notes = notesInput ? notesInput.value.trim() : '';
+
+    if (!reviewerId) {
+      alert('Please select a reviewer.');
+      if (revSelect) revSelect.focus();
+      return;
+    }
+
+    try {
+      await apiRequest(`/api/tasks/${taskId}`, {
+        method: 'PATCH',
+        body: {
+          status: 'IN_REVIEW',
+          reviewer_employee_id: parseInt(reviewerId, 10),
+          review_notes: notes
+        }
+      });
+      const modal = document.getElementById('tmReviewSubmitModal');
+      if (modal) modal.remove();
+      toast('Task submitted for review');
+      await tmLoadAll();
+      if (tm.selectedTask && tm.selectedTask.id === taskId) {
+        tmOpenTaskDetails(taskId);
+      }
+    } catch (e) {
+      alert(`Could not submit for review: ${e.message}`);
+    }
+  };
+
+  window.tmPromptRequestChanges = function(taskId) {
+    const notes = prompt('Enter changes/feedback requested for the task assignee:');
+    if (notes === null) return;
+    if (!notes.trim()) {
+      alert('Please provide feedback notes describing the changes required.');
+      return;
+    }
+    tmConfirmRequestChanges(taskId, notes.trim());
+  };
+
+  window.tmConfirmRequestChanges = async function(taskId, notes) {
+    try {
+      await apiRequest(`/api/tasks/${taskId}`, {
+        method: 'PATCH',
+        body: {
+          status: 'IN_PROGRESS',
+          review_notes: notes
+        }
+      });
+      toast('Task returned to In Progress with changes requested');
+      await tmLoadAll();
+      if (tm.selectedTask && tm.selectedTask.id === taskId) {
+        tmOpenTaskDetails(taskId);
+      }
+    } catch (e) {
+      alert(`Could not request changes: ${e.message}`);
+    }
+  };
+
+  window.tmApproveReview = async function(taskId) {
+    if (!confirm('Approve and mark this task as Completed?')) return;
+    try {
+      await apiRequest(`/api/tasks/${taskId}`, {
+        method: 'PATCH',
+        body: {
+          status: 'COMPLETED',
+          review_notes: 'Approved and completed'
+        }
+      });
+      toast('Task approved and completed!');
+      await tmLoadAll();
+      if (tm.selectedTask && tm.selectedTask.id === taskId) {
+        tmOpenTaskDetails(taskId);
+      }
+    } catch (e) {
+      alert(`Could not approve task: ${e.message}`);
     }
   };
 

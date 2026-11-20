@@ -189,6 +189,85 @@ async function runTests() {
   console.log(`- Remaining Free Mins: ${capacity.remainingAssignableMinutes} mins`);
   console.log(`- Is Over-Allocated: ${capacity.isOverAllocated}`);
 
+  // 6b. Test Status-Specific Capacity & Review Workflow Allocation
+  console.log('\n[Test 6b] Testing Status-Specific Capacity & Reviewer Allocation Shift...');
+  const todayStr = new Date().toISOString().slice(0, 10);
+  
+  // Create an OPEN task (90 minutes) for Employee 1
+  const flowTask = await service.createTask({
+    title: 'Test Status Workflow Allocation Shift',
+    team_id: 2,
+    owner_employee_id: 1,
+    priority: 'HIGH',
+    estimated_minutes: 90,
+    due_date: todayStr,
+    requires_approval: false
+  }, testUser);
+  console.log(`✓ Created test flow task: [${flowTask.task_code}] in status ${flowTask.status}`);
+
+  // Base capacity check: OPEN task should NOT count in task allocation
+  const capOpen1 = await service.getEmployeeDailyCapacityAndUtilization(1, todayStr, 'Operations');
+  const capOpen2 = await service.getEmployeeDailyCapacityAndUtilization(2, todayStr, 'Operations');
+  console.log(`✓ With task OPEN: Emp1 taskAlloc = ${capOpen1.taskAllocMinutes}m, Emp2 taskAlloc = ${capOpen2.taskAllocMinutes}m`);
+
+  // Move task to IN_PROGRESS
+  await service.updateTask(flowTask.id, { status: 'IN_PROGRESS' }, testUser);
+  const capProg1 = await service.getEmployeeDailyCapacityAndUtilization(1, todayStr, 'Operations');
+  const capProg2 = await service.getEmployeeDailyCapacityAndUtilization(2, todayStr, 'Operations');
+  console.log(`✓ With task IN_PROGRESS: Emp1 taskAlloc = ${capProg1.taskAllocMinutes}m (+90m), Emp2 taskAlloc = ${capProg2.taskAllocMinutes}m`);
+  if (capProg1.taskAllocMinutes !== capOpen1.taskAllocMinutes + 90) {
+    throw new Error(`Expected Emp1 taskAlloc to increase by 90m when IN_PROGRESS. Was: ${capProg1.taskAllocMinutes}, expected: ${capOpen1.taskAllocMinutes + 90}`);
+  }
+
+  // Move task to IN_REVIEW, assigning reviewer as Employee 2 (Ibrahim Shah)
+  await service.updateTask(flowTask.id, {
+    status: 'IN_REVIEW',
+    reviewer_employee_id: 2,
+    review_notes: 'Completed draft code. Please review logic.'
+  }, testUser);
+  const capRev1 = await service.getEmployeeDailyCapacityAndUtilization(1, todayStr, 'Operations');
+  const capRev2 = await service.getEmployeeDailyCapacityAndUtilization(2, todayStr, 'Operations');
+  console.log(`✓ With task IN_REVIEW (assigned to Emp2): Emp1 taskAlloc = ${capRev1.taskAllocMinutes}m (dropped to open level), Emp2 taskAlloc = ${capRev2.taskAllocMinutes}m (+90m)`);
+  if (capRev1.taskAllocMinutes !== capOpen1.taskAllocMinutes) {
+    throw new Error(`Expected Emp1 taskAlloc to drop back when task is in review! Got: ${capRev1.taskAllocMinutes}`);
+  }
+  if (capRev2.taskAllocMinutes !== capOpen2.taskAllocMinutes + 90) {
+    throw new Error(`Expected Emp2 (reviewer) taskAlloc to increase by 90m when IN_REVIEW! Got: ${capRev2.taskAllocMinutes}`);
+  }
+
+  // Reviewer requests changes -> task moves back to IN_PROGRESS
+  await service.updateTask(flowTask.id, {
+    status: 'IN_PROGRESS',
+    review_notes: 'Need unit test cases added.'
+  }, { employeeId: 2, userId: 2 });
+  const capBack1 = await service.getEmployeeDailyCapacityAndUtilization(1, todayStr, 'Operations');
+  const capBack2 = await service.getEmployeeDailyCapacityAndUtilization(2, todayStr, 'Operations');
+  console.log(`✓ After Changes Requested (IN_PROGRESS): Emp1 taskAlloc = ${capBack1.taskAllocMinutes}m (+90m), Emp2 taskAlloc = ${capBack2.taskAllocMinutes}m (returned to base)`);
+  if (capBack1.taskAllocMinutes !== capProg1.taskAllocMinutes) {
+    throw new Error(`Expected Emp1 taskAlloc to return to +90m after changes requested!`);
+  }
+  if (capBack2.taskAllocMinutes !== capOpen2.taskAllocMinutes) {
+    throw new Error(`Expected Emp2 taskAlloc to clear after requesting changes!`);
+  }
+
+  // Reviewer approves task -> COMPLETED
+  await service.updateTask(flowTask.id, {
+    status: 'COMPLETED',
+    review_notes: 'Approved and verified.'
+  }, { employeeId: 2, userId: 2 });
+  const capDone1 = await service.getEmployeeDailyCapacityAndUtilization(1, todayStr, 'Operations');
+  const capDone2 = await service.getEmployeeDailyCapacityAndUtilization(2, todayStr, 'Operations');
+  console.log(`✓ After COMPLETED: Emp1 taskAlloc = ${capDone1.taskAllocMinutes}m, Emp2 taskAlloc = ${capDone2.taskAllocMinutes}m (neither counted)`);
+  if (capDone1.taskAllocMinutes !== capOpen1.taskAllocMinutes || capDone2.taskAllocMinutes !== capOpen2.taskAllocMinutes) {
+    throw new Error('Completed task should not contribute to either employee task allocation!');
+  }
+
+  // Clean up flowTask
+  await db.run('DELETE FROM connect_task_comments WHERE task_id = ?', [flowTask.id]);
+  await db.run('DELETE FROM connect_task_audit_log WHERE task_id = ?', [flowTask.id]);
+  await db.run('DELETE FROM connect_task_tasks WHERE id = ?', [flowTask.id]);
+  console.log('✓ Status-specific capacity and review workflow verified 100%!');
+
   // 7. Test CRM Regular Workload Extraction
   console.log('\n[Test 7] Testing CRM Regular Workload for Operations...');
   const crmWorkload = await service.getCrmRegularWorkload(1, 'Operations', null);

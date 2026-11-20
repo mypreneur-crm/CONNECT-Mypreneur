@@ -55,11 +55,29 @@ async function runMigration() {
   } else {
     console.log("✓ Column previous_owner_employee_id already present");
   }
+  if (!colNames.includes('reviewer_employee_id')) {
+    await db.run("ALTER TABLE connect_task_tasks ADD COLUMN reviewer_employee_id INT NULL AFTER previous_owner_employee_id, ADD KEY idx_task_reviewer (reviewer_employee_id, status)");
+    console.log("✓ Added column reviewer_employee_id to connect_task_tasks");
+  } else {
+    console.log("✓ Column reviewer_employee_id already present");
+  }
   if (!colNames.includes('handoff_notes')) {
     await db.run("ALTER TABLE connect_task_tasks ADD COLUMN handoff_notes TEXT NULL AFTER description");
     console.log("✓ Added column handoff_notes to connect_task_tasks");
   } else {
     console.log("✓ Column handoff_notes already present");
+  }
+  if (!colNames.includes('review_requested_at')) {
+    await db.run("ALTER TABLE connect_task_tasks ADD COLUMN review_requested_at DATETIME NULL AFTER handoff_notes");
+    console.log("✓ Added column review_requested_at to connect_task_tasks");
+  } else {
+    console.log("✓ Column review_requested_at already present");
+  }
+  if (!colNames.includes('review_notes')) {
+    await db.run("ALTER TABLE connect_task_tasks ADD COLUMN review_notes TEXT NULL AFTER review_requested_at");
+    console.log("✓ Added column review_notes to connect_task_tasks");
+  } else {
+    console.log("✓ Column review_notes already present");
   }
   if (!colNames.includes('due_date_reason')) {
     await db.run("ALTER TABLE connect_task_tasks ADD COLUMN due_date_reason TEXT NULL AFTER deadline");
